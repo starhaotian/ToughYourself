@@ -728,6 +728,36 @@
     .sync.busy { color: var(--muted); }
     .sync.err { color: var(--red); }
 
+    .set-block { margin-bottom: 40px; }
+    .set-lead {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.7;
+      margin: 4px 0 16px;
+    }
+    .pat-saved {
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.04em;
+      margin-bottom: 12px;
+    }
+    .agent-line {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .agent-line .opt {
+      flex: 1;
+      margin-bottom: 0;
+      text-align: left;
+    }
+    .agent-line .opt-top { width: 100%; }
+    select.line-in {
+      appearance: none;
+      border-radius: 0;
+      background: transparent;
+    }
+
     @media (max-width: 720px) {
       .month-grid .cell.has { min-height: 108px; padding: 6px 5px 5px; }
       .cell-t { font-size: 11px; }
@@ -750,6 +780,8 @@
   ></script>
   <script>
     const KEY = "judgment.v2";
+    const QCA_KEY = "judgment.qca.v1";
+    const QCA_PAT_URL = "https://qoder.com/cloud/pat-keys";
 
     // ====== 部署配置：换成你自己的 Supabase 项目（步骤见 README）======
     const SUPABASE_URL = "https://lydqeymisbweiwflxhii.supabase.co";
@@ -975,8 +1007,16 @@
       miss: "",
       confirmDel: false,
       err: "",
+      qcaBusy: false,
+      qcaErr: "",
+      qcaAgents: [],
+      qcaModels: [],
+      qcaReplacing: false,
+      qcaConfirmDel: false,
+      qcaReady: false,
     };
     let draft = emptyDraft();
+    let agentForm = { id: null, name: "", system: "", model: "" };
 
     function byId(id) {
       return data.decisions.find((d) => d.id === id) || null;
@@ -1198,11 +1238,7 @@
       const right = `
         <button class="quiet ${mode === "month" ? "on" : ""}" type="button" data-act="month">月</button>
         <button class="quiet ${mode === "week" ? "on" : ""}" type="button" data-act="week">周</button>
-        ${authMode === "cloud"
-          ? `<button class="quiet" type="button" data-act="logout" title="${escapeHtml(userEmail)}">退出</button>`
-          : CLOUD_READY
-            ? `<button class="quiet" type="button" data-act="to-login">登录</button>`
-            : ""}
+        <button class="quiet" type="button" data-act="settings">设置</button>
       `;
       const brand = `
         <div class="brand">
@@ -1457,12 +1493,255 @@
       </div>`;
     }
 
+    function loadQca() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(QCA_KEY) || "null");
+        if (raw && typeof raw === "object") {
+          return {
+            pat: typeof raw.pat === "string" ? raw.pat : "",
+            currentAgentId: typeof raw.currentAgentId === "string" ? raw.currentAgentId : "",
+          };
+        }
+      } catch (_) {}
+      return { pat: "", currentAgentId: "" };
+    }
+
+    function saveQca(next) {
+      localStorage.setItem(QCA_KEY, JSON.stringify({
+        pat: next.pat || "",
+        currentAgentId: next.currentAgentId || "",
+      }));
+    }
+
+    function maskPat(pat) {
+      if (!pat) return "";
+      return pat.slice(0, 3) + "••••" + pat.slice(-4);
+    }
+
+    function modelIdOf(agent) {
+      const m = agent && agent.model;
+      if (!m) return "";
+      return typeof m === "string" ? m : (m.id || "");
+    }
+
+    function qcaErrText(res, body) {
+      if (res.status === 401) return "钥匙不对，请重新填写。";
+      if (res.status === 409) return "这个 Agent 刚被改过，请返回列表再打开一次。";
+      if (res.status === 429) return "Qoder 忙，请稍后再试。";
+      const msg = body && ((body.error && body.error.message) || body.message || (typeof body.error === "string" ? body.error : ""));
+      if (msg) return msg;
+      return "没连上 Qoder（" + res.status + "）。";
+    }
+
+    async function qcaJson(path, opts) {
+      const pat = loadQca().pat;
+      const headers = { Authorization: "Bearer " + pat };
+      if (opts && opts.body != null) headers["Content-Type"] = "application/json";
+      let res;
+      try {
+        res = await fetch("/api/qca/" + path, {
+          method: (opts && opts.method) || "GET",
+          headers,
+          body: opts && opts.body != null ? JSON.stringify(opts.body) : undefined,
+        });
+      } catch (_) {
+        const err = new Error("AI 设置需要在已部署的网站上打开，或在本目录运行 vercel dev。");
+        err.status = 0;
+        throw err;
+      }
+      const text = await res.text();
+      let body = null;
+      if (text) {
+        try { body = JSON.parse(text); } catch (_) { body = { message: text.slice(0, 200) }; }
+      }
+      if (!res.ok) {
+        const err = new Error(qcaErrText(res, body));
+        err.status = res.status;
+        throw err;
+      }
+      return body;
+    }
+
+    async function listAgents() {
+      const out = [];
+      let page = "";
+      for (let i = 0; i < 20; i++) {
+        const path = page ? "agents?page=" + encodeURIComponent(page) : "agents";
+        const body = await qcaJson(path);
+        out.push.apply(out, (body && body.data) || []);
+        if (!body || !body.has_more || !body.next_page) break;
+        page = body.next_page;
+      }
+      return out;
+    }
+
+    async function refreshQca() {
+      ui.qcaBusy = true;
+      ui.qcaErr = "";
+      render();
+      try {
+        const [agents, modelsBody] = await Promise.all([
+          listAgents(),
+          qcaJson("models"),
+        ]);
+        ui.qcaAgents = agents;
+        ui.qcaModels = ((modelsBody && modelsBody.data) || []).filter((m) => m && m.is_enabled !== false);
+        ui.qcaReady = true;
+        const cfg = loadQca();
+        if (cfg.currentAgentId && !agents.some((a) => a.id === cfg.currentAgentId)) {
+          saveQca({ pat: cfg.pat, currentAgentId: "" });
+        }
+      } catch (err) {
+        ui.qcaErr = err.message || "没连上 Qoder。";
+        ui.qcaReady = false;
+        if (err.status === 401) {
+          ui.qcaAgents = [];
+          ui.qcaModels = [];
+        }
+      }
+      ui.qcaBusy = false;
+      render();
+    }
+
+    function openSettings() {
+      ui.screen = "settings";
+      ui.qcaErr = "";
+      ui.qcaReplacing = false;
+      ui.qcaConfirmDel = false;
+      ui.err = "";
+      render();
+      if (loadQca().pat) refreshQca();
+    }
+
+    function renderAccountBlock() {
+      if (authMode === "cloud") {
+        return `<p class="set-lead">${escapeHtml(userEmail)}</p>
+          <button class="ghost" type="button" data-act="logout">退出</button>`;
+      }
+      const loginBtn = CLOUD_READY
+        ? `<button class="quiet" type="button" data-act="to-login">去登录</button>`
+        : "";
+      return `<p class="set-lead">仅本机使用。决策和 AI 钥匙都只在这台浏览器里。</p>${loginBtn}`;
+    }
+
+    function renderPatBlock() {
+      const cfg = loadQca();
+      if (!cfg.pat || ui.qcaReplacing) {
+        const cancel = cfg.pat
+          ? `<button class="quiet" type="button" data-act="cancel-replace-pat">取消</button>`
+          : "";
+        return `
+          <label class="lab" for="qca-pat">Qoder 个人访问令牌</label>
+          <input class="line-in" id="qca-pat" type="password" autocomplete="off" placeholder="pt-…" ${ui.qcaBusy ? "disabled" : ""} />
+          <p class="set-lead">在 <a href="${QCA_PAT_URL}" target="_blank" rel="noopener">${QCA_PAT_URL}</a> 创建。钥匙只存在这台浏览器，不会同步到云端。</p>
+          <div class="actions">
+            <button class="primary" type="button" data-act="save-pat" ${ui.qcaBusy ? "disabled" : ""}>保存</button>
+            ${cancel}
+          </div>`;
+      }
+      return `
+        <p class="pat-saved">${escapeHtml(maskPat(cfg.pat))}</p>
+        <div class="actions" style="margin-top:8px">
+          <button class="quiet" type="button" data-act="replace-pat" ${ui.qcaBusy ? "disabled" : ""}>更换</button>
+          <button class="ghost" type="button" data-act="clear-pat" ${ui.qcaBusy ? "disabled" : ""}>清除</button>
+        </div>`;
+    }
+
+    function renderAgentList() {
+      const cfg = loadQca();
+      if (!cfg.pat || ui.qcaReplacing) return "";
+      if (ui.qcaBusy) {
+        return `<p class="set-lead">正在向 Qoder 拉取…</p>`;
+      }
+      if (!ui.qcaReady) return "";
+      const rows = ui.qcaAgents.map((a) => {
+        const on = a.id === cfg.currentAgentId;
+        return `<div class="agent-line">
+          <button class="opt${on ? " on" : ""}" type="button" data-act="use-agent" data-id="${escapeHtml(a.id)}" ${ui.qcaBusy ? "disabled" : ""}>
+            <span class="opt-top">
+              <span class="radio"><i></i></span>
+              <span class="opt-name">${escapeHtml(a.name || a.id)}</span>
+            </span>
+          </button>
+          <button class="quiet" type="button" data-act="edit-agent" data-id="${escapeHtml(a.id)}" ${ui.qcaBusy ? "disabled" : ""}>改</button>
+        </div>`;
+      }).join("");
+      const empty = ui.qcaAgents.length ? "" : `<p class="set-lead">还没有 Agent。新建一个才会出现在这里。改的是你 Qoder 账号里的真 Agent。</p>`;
+      return `
+        <span class="lab">当前使用</span>
+        ${empty}
+        ${rows}
+        <div class="actions">
+          <button class="primary" type="button" data-act="new-agent" ${ui.qcaBusy ? "disabled" : ""}>新建</button>
+        </div>`;
+    }
+
+    function renderSettings() {
+      return `
+        ${header("设置", `<button class="quiet back" type="button" data-act="back" title="返回">‹</button>`, "")}
+        <div class="paper">
+          <div class="set-block">
+            <span class="lab">账号</span>
+            ${renderAccountBlock()}
+          </div>
+          <div class="set-block">
+            <span class="lab">AI</span>
+            ${renderPatBlock()}
+            ${renderAgentList()}
+            <p class="err">${escapeHtml(ui.qcaErr)}</p>
+          </div>
+        </div>`;
+    }
+
+    function renderAgentForm() {
+      const editing = !!agentForm.id;
+      const models = ui.qcaModels.length
+        ? ui.qcaModels
+        : (agentForm.model ? [{ id: agentForm.model, display_name: agentForm.model }] : []);
+      const opts = models.map((m) => {
+        const id = m.id || "";
+        const label = m.display_name || id;
+        const sel = id === agentForm.model ? " selected" : "";
+        return `<option value="${escapeHtml(id)}"${sel}>${escapeHtml(label)}</option>`;
+      }).join("");
+      const del = editing
+        ? `<button class="ghost" type="button" data-act="ask-del-agent" ${ui.qcaBusy ? "disabled" : ""}>删除</button>`
+        : "";
+      const mask = ui.qcaConfirmDel ? `
+        <div class="mask">
+          <div class="dialog" data-stop="1">
+            <p>会从你的 Qoder 账号里删掉「${escapeHtml(agentForm.name || "这个 Agent")}」，不是只在本产品里取消选用。</p>
+            <div class="dialog-acts">
+              <button class="quiet" type="button" data-act="cancel-del-agent">取消</button>
+              <button class="ghost" type="button" data-act="del-agent">删除</button>
+            </div>
+          </div>
+        </div>` : "";
+      return `
+        ${header(editing ? "编辑 Agent" : "新建 Agent", `<button class="quiet back" type="button" data-act="back" title="返回">‹</button>`, del)}
+        <div class="paper">
+          <label class="lab" for="agent-name">名字</label>
+          <input class="line-in" id="agent-name" value="${escapeHtml(agentForm.name)}" ${ui.qcaBusy ? "disabled" : ""} />
+          <label class="lab" for="agent-system">系统提示词</label>
+          <textarea class="area-in" id="agent-system" ${ui.qcaBusy ? "disabled" : ""}>${escapeHtml(agentForm.system)}</textarea>
+          <label class="lab" for="agent-model">模型</label>
+          <select class="line-in" id="agent-model" ${ui.qcaBusy ? "disabled" : ""}>${opts}</select>
+          <p class="err">${escapeHtml(ui.qcaErr)}</p>
+          <div class="actions">
+            <button class="primary" type="button" data-act="save-agent" ${ui.qcaBusy ? "disabled" : ""}>保存</button>
+          </div>
+        </div>
+        ${mask}`;
+    }
+
     function render() {
       const shell = $("#shell");
       shell.className = ui.screen === "cal" ? "shell wide" : "shell";
       if (ui.screen === "cal") shell.innerHTML = renderCal();
       else if (ui.screen === "day") shell.innerHTML = renderDay();
       else if (ui.screen === "compose") shell.innerHTML = renderCompose();
+      else if (ui.screen === "settings") shell.innerHTML = renderSettings();
+      else if (ui.screen === "agent-form") shell.innerHTML = renderAgentForm();
       else shell.innerHTML = renderPaper();
       bind();
     }
@@ -1546,6 +1825,7 @@
       shell.onclick = (e) => {
         if (e.target.classList && e.target.classList.contains("mask")) {
           ui.confirmDel = false;
+          ui.qcaConfirmDel = false;
           render();
           return;
         }
@@ -1634,7 +1914,14 @@
         } else if (act === "edit") {
           startEdit();
         } else if (act === "back") {
-          if (ui.screen === "paper") {
+          if (ui.screen === "agent-form") {
+            ui.qcaConfirmDel = false;
+            ui.qcaErr = "";
+            ui.screen = "settings";
+            render();
+          } else if (ui.screen === "settings") {
+            goCal();
+          } else if (ui.screen === "paper") {
             if (ui.editing) {
               syncDraft();
               const d = byId(ui.paperId);
@@ -1756,6 +2043,160 @@
           logout();
         } else if (act === "to-login") {
           renderLogin();
+        } else if (act === "settings") {
+          openSettings();
+        } else if (act === "save-pat") {
+          const box = $("#qca-pat");
+          const pat = box ? box.value.trim() : "";
+          if (!pat) {
+            ui.qcaErr = "请填入个人访问令牌。";
+            render();
+            return;
+          }
+          saveQca({ pat, currentAgentId: "" });
+          ui.qcaReplacing = false;
+          refreshQca();
+        } else if (act === "replace-pat") {
+          ui.qcaReplacing = true;
+          ui.qcaErr = "";
+          render();
+        } else if (act === "cancel-replace-pat") {
+          ui.qcaReplacing = false;
+          ui.qcaErr = "";
+          render();
+        } else if (act === "clear-pat") {
+          saveQca({ pat: "", currentAgentId: "" });
+          ui.qcaAgents = [];
+          ui.qcaModels = [];
+          ui.qcaReplacing = false;
+          ui.qcaReady = false;
+          ui.qcaErr = "";
+          render();
+        } else if (act === "use-agent") {
+          const cfg = loadQca();
+          saveQca({ pat: cfg.pat, currentAgentId: t.dataset.id || "" });
+          render();
+        } else if (act === "edit-agent") {
+          e.stopPropagation();
+          const id = t.dataset.id;
+          if (!id || ui.qcaBusy) return;
+          ui.qcaBusy = true;
+          ui.qcaErr = "";
+          render();
+          qcaJson("agents/" + encodeURIComponent(id)).then((agent) => {
+            agentForm = {
+              id: agent.id,
+              name: agent.name || "",
+              system: agent.system || "",
+              model: modelIdOf(agent),
+              version: agent.version,
+            };
+            ui.qcaBusy = false;
+            ui.screen = "agent-form";
+            ui.qcaConfirmDel = false;
+            render();
+          }).catch((err) => {
+            ui.qcaBusy = false;
+            ui.qcaErr = err.message || "打不开这个 Agent。";
+            render();
+          });
+        } else if (act === "new-agent") {
+          if (ui.qcaBusy) return;
+          const first = ui.qcaModels[0];
+          agentForm = {
+            id: null,
+            name: "",
+            system: "",
+            model: first ? first.id : "",
+            version: null,
+          };
+          ui.qcaErr = "";
+          ui.qcaConfirmDel = false;
+          ui.screen = "agent-form";
+          render();
+          const name = $("#agent-name");
+          if (name) name.focus();
+        } else if (act === "save-agent") {
+          if (ui.qcaBusy) return;
+          const nameEl = $("#agent-name");
+          const sysEl = $("#agent-system");
+          const modelEl = $("#agent-model");
+          const name = nameEl ? nameEl.value.trim() : "";
+          const system = sysEl ? sysEl.value : "";
+          const model = modelEl ? modelEl.value : "";
+          if (!name) {
+            ui.qcaErr = "请给 Agent 起个名字。";
+            render();
+            return;
+          }
+          if (!model) {
+            ui.qcaErr = "请选择模型。";
+            render();
+            return;
+          }
+          ui.qcaBusy = true;
+          ui.qcaErr = "";
+          render();
+          const after = () => {
+            ui.qcaBusy = false;
+            ui.screen = "settings";
+            refreshQca();
+          };
+          const fail = (err) => {
+            ui.qcaBusy = false;
+            ui.qcaErr = err.message || "没保存成。";
+            render();
+          };
+          if (agentForm.id) {
+            qcaJson("agents/" + encodeURIComponent(agentForm.id)).then((fresh) => {
+              return qcaJson("agents/" + encodeURIComponent(agentForm.id), {
+                method: "POST",
+                body: { name, system, model, version: fresh.version },
+              });
+            }).then(after).catch(fail);
+          } else {
+            qcaJson("agents", {
+              method: "POST",
+              body: {
+                name,
+                system,
+                model,
+                tools: [{ type: "agent_toolset_20260401" }],
+              },
+            }).then((created) => {
+              const cfg = loadQca();
+              if (created && created.id && !cfg.currentAgentId) {
+                saveQca({ pat: cfg.pat, currentAgentId: created.id });
+              }
+              after();
+            }).catch(fail);
+          }
+        } else if (act === "ask-del-agent") {
+          ui.qcaConfirmDel = true;
+          render();
+        } else if (act === "cancel-del-agent") {
+          ui.qcaConfirmDel = false;
+          render();
+        } else if (act === "del-agent") {
+          if (!agentForm.id || ui.qcaBusy) return;
+          ui.qcaBusy = true;
+          ui.qcaErr = "";
+          ui.qcaConfirmDel = false;
+          render();
+          qcaJson("agents/" + encodeURIComponent(agentForm.id), { method: "DELETE" }).then(() => {
+            const cfg = loadQca();
+            if (cfg.currentAgentId === agentForm.id) {
+              saveQca({ pat: cfg.pat, currentAgentId: "" });
+            }
+            agentForm = { id: null, name: "", system: "", model: "" };
+            ui.qcaBusy = false;
+            ui.screen = "settings";
+            refreshQca();
+          }).catch((err) => {
+            ui.qcaBusy = false;
+            ui.qcaErr = err.message || "没删掉。";
+            render();
+          });
         }
       };
 
