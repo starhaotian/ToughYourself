@@ -1,0 +1,1501 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>决策</title>
+  <style>
+    :root {
+      --bg: #f3eee4;
+      --paper: #faf7f1;
+      --ink: #1c1814;
+      --muted: #7a7268;
+      --faint: #b4aba1;
+      --line: #ddd4c6;
+      --gray: #8a8278;
+      --gold: #c4a04a;
+      --red: #c45c4a;
+      --green: #3f7a55;
+      --serif: "Songti SC", "STSong", "Noto Serif CJK SC", Georgia, serif;
+      --sans: "PingFang SC", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body { min-height: 100%; }
+
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 16px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    ::selection { background: #eadfd0; }
+    ::placeholder { color: var(--faint); }
+
+    button, input, textarea { font: inherit; color: inherit; }
+    button { background: none; border: none; cursor: pointer; }
+    button:disabled { cursor: not-allowed; opacity: 0.34; }
+
+    .shell {
+      width: min(640px, 100%);
+      margin: 0 auto;
+      padding: 28px 24px calc(28px + env(safe-area-inset-bottom));
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .shell.wide {
+      width: min(1120px, calc(100vw - 32px));
+      padding-left: 16px;
+      padding-right: 16px;
+    }
+
+    header.top {
+      margin-bottom: 22px;
+    }
+
+    .top-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .nav-side {
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+    }
+
+    .month-title {
+      font-family: var(--serif);
+      font-size: 28px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-align: center;
+    }
+
+    button.quiet {
+      color: var(--muted);
+      font-size: 14px;
+      letter-spacing: 0.08em;
+    }
+    button.quiet:hover { color: var(--ink); }
+    button.quiet.on {
+      color: var(--ink);
+      border-bottom: 1px solid var(--ink);
+      padding-bottom: 2px;
+    }
+    button.back {
+      min-width: 44px;
+      min-height: 44px;
+      font-size: 22px;
+      line-height: 1;
+      margin-left: -8px;
+    }
+
+    .weekdays, .grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      width: 100%;
+    }
+
+    .weekdays {
+      margin-bottom: 6px;
+    }
+
+    .weekdays span {
+      text-align: center;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      color: var(--faint);
+      padding: 4px 0 10px;
+    }
+
+    .cell {
+      min-height: 64px;
+      padding: 6px 2px 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      border-radius: 8px;
+    }
+
+    .month-grid, .week-grid { gap: 5px; }
+
+    .month-grid .cell, .week-grid .cell {
+      align-items: stretch;
+      padding: 8px 8px 7px;
+      min-height: 72px;
+      gap: 4px;
+    }
+
+    .month-grid .cell {
+      cursor: pointer;
+    }
+    .month-grid .cell:hover { background: #ece6da; }
+    .month-grid .cell.has { min-height: 128px; }
+    .week-grid .cell { min-height: 88px; }
+    .week-grid .cell.has { min-height: 176px; }
+
+    .cell.has { background: var(--paper); }
+    .cell.out { opacity: 0.55; }
+    .cell.out .num { color: var(--faint); }
+    .cell.today .num {
+      font-family: var(--serif);
+      font-weight: 600;
+      border-bottom: 1px solid var(--ink);
+      padding-bottom: 1px;
+    }
+
+    .cell-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 6px;
+      margin-bottom: 2px;
+    }
+
+    .num {
+      font-size: 14px;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.2;
+    }
+
+    .week-grid .num {
+      font-family: var(--serif);
+      font-size: 22px;
+    }
+
+    .cell-n {
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      color: var(--faint);
+      letter-spacing: 0.04em;
+    }
+    .cell-n.hot { color: var(--red); }
+    .cell-n.due { color: var(--gold); }
+
+    .cell-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      width: 100%;
+      text-align: left;
+      min-width: 0;
+      padding: 1px 0;
+    }
+    .cell-item:hover .cell-t { color: var(--green); }
+
+    .cell-t {
+      flex: 1;
+      min-width: 0;
+      font-size: 12px;
+      line-height: 1.35;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .week-grid .cell-t { font-size: 13px; }
+
+    .cell-more {
+      font-size: 11px;
+      color: var(--faint);
+      letter-spacing: 0.04em;
+    }
+
+    .mks {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 3px;
+      min-height: 10px;
+    }
+
+    .mk {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .mk svg { width: 7px; height: 7px; display: block; }
+
+    .mk.start-live { background: var(--gray); }
+    .mk.end-live { box-sizing: border-box; border: 1.5px dashed var(--gray); background: transparent; }
+    .mk.end-due { box-sizing: border-box; border: 2px dashed var(--gold); background: transparent; }
+    .mk.end-over { box-sizing: border-box; border: 2px dashed var(--red); background: transparent; }
+    .mk.start-right, .mk.end-right { background: var(--green); }
+    .mk.start-wrong, .mk.end-wrong { background: var(--red); }
+    .mk.start-half, .mk.end-half { background: var(--gold); }
+
+    .week-grid .cell-item .mk { width: 10px; height: 10px; }
+    .week-grid .cell-item .mk svg { width: 8px; height: 8px; display: block; }
+
+    .week-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex: 1;
+    }
+    .week-row {
+      display: grid;
+      grid-template-columns: 72px 1fr;
+      gap: 16px;
+      align-items: start;
+      padding: 16px 18px;
+      border-radius: 12px;
+      min-height: 88px;
+      cursor: pointer;
+    }
+    .week-row:hover { background: #ece6da; }
+    .week-row.has {
+      background: var(--paper);
+    }
+    .week-row.today .week-date-num {
+      font-family: var(--serif);
+      font-weight: 600;
+      border-bottom: 1px solid var(--ink);
+    }
+    .week-date {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding-top: 2px;
+    }
+    .week-date-wd {
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      color: var(--faint);
+    }
+    .week-date-num {
+      font-family: var(--serif);
+      font-size: 28px;
+      line-height: 1.1;
+      width: fit-content;
+    }
+    .week-date-n {
+      font-size: 12px;
+      color: var(--faint);
+      margin-top: 6px;
+    }
+    .week-date-n.hot { color: var(--red); }
+    .week-date-n.due { color: var(--gold); }
+    .week-items { min-width: 0; }
+    .week-row .cell-item {
+      padding: 10px 0;
+      gap: 10px;
+      align-items: flex-start;
+      border-bottom: 1px solid var(--line);
+    }
+    .week-row .cell-item:last-of-type { border-bottom: none; }
+    .week-row .cell-t {
+      font-size: 16px;
+      line-height: 1.45;
+      white-space: normal;
+    }
+    .week-row .mk {
+      width: 12px;
+      height: 12px;
+      margin-top: 4px;
+    }
+    .week-row .mk svg { width: 9px; height: 9px; display: block; }
+
+    .mini .grid { gap: 0; }
+    .mini .cell {
+      min-height: 36px;
+      padding: 2px 0 4px;
+      align-items: center;
+      gap: 3px;
+      background: transparent;
+      opacity: 1;
+    }
+    .mini .cell.has { background: transparent; }
+    .mini .num { font-size: 12px; }
+
+    .empty-line {
+      margin-top: 48px;
+      text-align: center;
+      color: var(--muted);
+      font-family: var(--serif);
+      font-size: 17px;
+      letter-spacing: 0.04em;
+    }
+
+    .dock {
+      margin-top: auto;
+      padding-top: 32px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .primary {
+      font-family: var(--serif);
+      font-size: 18px;
+      letter-spacing: 0.28em;
+      padding: 6px 4px 8px;
+      border-bottom: 1px solid var(--ink);
+    }
+    .primary:hover:not(:disabled) { color: var(--green); border-bottom-color: var(--green); }
+
+    .ghost {
+      color: var(--muted);
+      font-size: 14px;
+      letter-spacing: 0.08em;
+    }
+    .ghost:hover { color: var(--red); }
+
+    .day-list { list-style: none; }
+    .day-list li { border-top: 1px solid var(--line); }
+    .day-list li:last-child { border-bottom: 1px solid var(--line); }
+
+    .day-row {
+      width: 100%;
+      text-align: left;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 18px 4px;
+    }
+    .day-row:hover .theme { color: var(--green); }
+    .day-row .theme {
+      font-family: var(--serif);
+      font-size: 20px;
+      font-weight: 600;
+      line-height: 1.35;
+    }
+
+    .paper { padding-bottom: 40px; }
+
+    .title-in {
+      width: 100%;
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid var(--line);
+      padding: 4px 0 12px;
+      font-family: var(--serif);
+      font-size: 28px;
+      font-weight: 600;
+      line-height: 1.3;
+      outline: none;
+    }
+    .title-in:focus { border-bottom-color: var(--ink); }
+
+    .lab {
+      display: block;
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      color: var(--muted);
+      margin: 28px 0 10px;
+    }
+
+    .line-in, .area-in {
+      width: 100%;
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid var(--line);
+      padding: 4px 0 10px;
+      outline: none;
+    }
+    .area-in {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+      min-height: 84px;
+      resize: none;
+      background: var(--paper);
+    }
+    .line-in:focus, .area-in:focus { border-color: var(--ink); }
+
+    .fold {
+      color: var(--muted);
+      font-size: 13px;
+      letter-spacing: 0.06em;
+      margin: 20px 0 8px;
+    }
+    .fold:hover { color: var(--ink); }
+
+    .opt {
+      background: var(--paper);
+      border: 1px solid transparent;
+      border-radius: 10px;
+      padding: 12px 12px 10px;
+      margin-bottom: 8px;
+      cursor: pointer;
+    }
+    .opt.on { border-color: var(--ink); }
+
+    .opt-top {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .radio {
+      width: 18px;
+      height: 18px;
+      border: 1.5px solid var(--faint);
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+    }
+    .opt.on .radio { border-color: var(--ink); }
+    .radio i {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--ink);
+      display: none;
+    }
+    .opt.on .radio i { display: block; }
+
+    .opt-name {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      padding: 4px 0;
+      min-width: 0;
+    }
+
+    .supp-btn {
+      color: var(--faint);
+      font-size: 13px;
+      flex-shrink: 0;
+      padding: 4px 0 4px 8px;
+    }
+    .supp-btn:hover, .supp-btn.on { color: var(--muted); }
+
+    .supp, .why-wrap { padding: 8px 0 4px 28px; }
+    .why-wrap .line-in { font-size: 15px; }
+    .supp .line-in, .supp .area-in { font-size: 13px; }
+    .supp .area-in { min-height: 56px; margin-bottom: 8px; }
+    .hint-mini { color: var(--faint); font-size: 12px; margin: 4px 0 8px 28px; }
+
+    .add-opt {
+      color: var(--muted);
+      font-size: 13px;
+      letter-spacing: 0.06em;
+      margin: 4px 0 8px 2px;
+    }
+    .add-opt:hover { color: var(--ink); }
+
+    .dates {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: end;
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .date-pick { text-align: left; }
+    .date-pick .lab { margin-top: 0; }
+    .date-val {
+      font-family: var(--serif);
+      font-size: 18px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--line);
+      min-height: 1.4em;
+    }
+    .date-pick.on .date-val { border-bottom-color: var(--ink); }
+    .date-val.empty { color: var(--faint); }
+    .dates .dash {
+      color: var(--faint);
+      padding-bottom: 8px;
+    }
+
+    .mini {
+      margin-top: 16px;
+      padding: 12px 8px 8px;
+      background: var(--paper);
+      border-radius: 12px;
+    }
+    .mini .weekdays span { padding-bottom: 4px; font-size: 11px; }
+    .mini .cell {
+      min-height: 36px;
+      padding: 2px 0 4px;
+      gap: 3px;
+    }
+    .mini .cell.span { background: #ece6da88; }
+    .mini .cell.pickable { cursor: pointer; }
+    .mini .cell.pickable:hover { background: #ece6da; }
+    .mini .num { font-size: 12px; }
+    .mini .mk { width: 6px; height: 6px; }
+    .mini .mk svg { display: none; }
+
+    .verdicts {
+      display: flex;
+      gap: 8px;
+      margin: 8px 0 16px;
+    }
+    .verdicts button {
+      font-family: var(--serif);
+      font-size: 20px;
+      padding: 8px 16px 10px;
+      color: var(--muted);
+      border-bottom: 1px solid transparent;
+    }
+    .verdicts button:hover { color: var(--ink); }
+    .verdicts button.on { color: var(--ink); border-bottom-color: var(--ink); }
+    .verdicts button.on[data-v="wrong"] { color: var(--red); border-bottom-color: var(--red); }
+    .verdicts button.on[data-v="right"] { color: var(--green); border-bottom-color: var(--green); }
+    .verdicts button.on[data-v="half"] { color: var(--gold); border-bottom-color: var(--gold); }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 28px;
+      margin-top: 36px;
+    }
+
+    .ro-title {
+      font-family: var(--serif);
+      font-size: 28px;
+      font-weight: 600;
+      line-height: 1.3;
+      margin-bottom: 8px;
+    }
+    .ro-body { color: var(--muted); font-size: 15px; margin: 6px 0; }
+    .ro-opt {
+      padding: 10px 0;
+      border-top: 1px solid var(--line);
+    }
+    .ro-opt.on { color: var(--ink); }
+    .stamp {
+      font-family: var(--serif);
+      font-size: 22px;
+      margin: 20px 0 8px;
+    }
+    .stamp.right { color: var(--green); }
+    .stamp.wrong { color: var(--red); }
+    .stamp.half { color: var(--gold); }
+
+    .mask {
+      position: fixed;
+      inset: 0;
+      background: #1c181466;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .dialog {
+      width: min(360px, 100%);
+      background: var(--bg);
+      border-radius: 12px;
+      padding: 28px 24px 22px;
+    }
+    .dialog p {
+      font-family: var(--serif);
+      font-size: 18px;
+      line-height: 1.45;
+      margin-bottom: 24px;
+    }
+    .dialog-acts { display: flex; justify-content: flex-end; gap: 20px; }
+
+    .err { color: var(--red); font-size: 13px; margin-top: 12px; min-height: 1.2em; }
+
+    @media (max-width: 720px) {
+      .month-grid .cell.has { min-height: 108px; padding: 6px 5px 5px; }
+      .cell-t { font-size: 11px; }
+    }
+
+    @media (max-width: 520px) {
+      .shell { padding: 22px 18px calc(22px + env(safe-area-inset-bottom)); }
+      .month-title { font-size: 22px; }
+      .cell { min-height: 56px; }
+      .title-in, .ro-title { font-size: 24px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell" id="shell"></div>
+  <script>
+    const KEY = "judgment.v2";
+    const WD = ["一", "二", "三", "四", "五", "六", "日"];
+    const VERDICT = { right: "对了", wrong: "错了", half: "一半" };
+
+    const $ = (sel, el = document) => el.querySelector(sel);
+
+    function pad(n) { return String(n).padStart(2, "0"); }
+
+    function iso(d) {
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    }
+
+    function parseIso(s) {
+      const [y, m, d] = s.split("-").map(Number);
+      return new Date(y, m - 1, d);
+    }
+
+    function today() { return iso(new Date()); }
+
+    function uid() {
+      return Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+    }
+
+    function ym(s) {
+      const d = parseIso(s);
+      return { y: d.getFullYear(), m: d.getMonth() };
+    }
+
+    function addMonths(s, n) {
+      const d = parseIso(s);
+      d.setDate(1);
+      d.setMonth(d.getMonth() + n);
+      return iso(d);
+    }
+
+    function addDays(s, n) {
+      const d = parseIso(s);
+      d.setDate(d.getDate() + n);
+      return iso(d);
+    }
+
+    function mondayOf(s) {
+      const d = parseIso(s);
+      const off = (d.getDay() + 6) % 7;
+      d.setDate(d.getDate() - off);
+      return iso(d);
+    }
+
+    function monthCells(s) {
+      const { y, m } = ym(s);
+      const first = new Date(y, m, 1);
+      const startPad = (first.getDay() + 6) % 7;
+      const cur = new Date(y, m, 1 - startPad);
+      const days = [];
+      for (let i = 0; i < 42; i++) {
+        days.push(iso(cur));
+        cur.setDate(cur.getDate() + 1);
+      }
+      if (days.slice(-7).every((date) => parseIso(date).getMonth() !== m)) {
+        days.length = 35;
+      }
+      return days;
+    }
+
+    function weekCells(s) {
+      const cur = parseIso(mondayOf(s));
+      const days = [];
+      for (let i = 0; i < 7; i++) {
+        days.push(iso(cur));
+        cur.setDate(cur.getDate() + 1);
+      }
+      return days;
+    }
+
+    function fmtShort(s) {
+      if (!s) return "";
+      const d = parseIso(s);
+      return `${d.getMonth() + 1}月${d.getDate()}日`;
+    }
+
+    function fmtTitle(s, mode) {
+      const d = parseIso(s);
+      if (mode === "week") {
+        const a = parseIso(mondayOf(s));
+        const b = parseIso(addDays(mondayOf(s), 6));
+        if (a.getMonth() === b.getMonth()) {
+          return `${a.getMonth() + 1}月${a.getDate()}日 – ${b.getDate()}日`;
+        }
+        return `${fmtShort(iso(a))} – ${fmtShort(iso(b))}`;
+      }
+      return `${d.getFullYear()} 年 ${d.getMonth() + 1} 月`;
+    }
+
+    function escapeHtml(s) {
+      return String(s || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function load() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(KEY) || "null");
+        if (raw && Array.isArray(raw.decisions)) return raw;
+      } catch (_) {}
+      return { decisions: [] };
+    }
+
+    function save() {
+      localStorage.setItem(KEY, JSON.stringify(data));
+    }
+
+    function emptyOptions() {
+      return [
+        { id: uid(), name: "", note: "", pro: "", con: "", why: "" },
+        { id: uid(), name: "", note: "", pro: "", con: "", why: "" },
+      ];
+    }
+
+    function emptyDraft() {
+      return {
+        title: "",
+        background: "",
+        options: emptyOptions(),
+        chosenId: null,
+        start: today(),
+        end: "",
+        check: "",
+      };
+    }
+
+    let data = load();
+    let ui = {
+      screen: "cal",
+      mode: "month",
+      anchor: today(),
+      day: null,
+      paperId: null,
+      pick: "end",
+      bgOpen: false,
+      supp: {},
+      concludeOpen: false,
+      verdict: "",
+      miss: "",
+      confirmDel: false,
+      err: "",
+    };
+    let draft = emptyDraft();
+
+    function byId(id) {
+      return data.decisions.find((d) => d.id === id) || null;
+    }
+
+    function markKind(dec, role, date) {
+      if (role === "start") {
+        if (dec.result) return "start-" + dec.result;
+        return "start-live";
+      }
+      if (dec.result) return "end-" + dec.result;
+      if (date < today()) return "end-over";
+      if (date === today()) return "end-due";
+      return "end-live";
+    }
+
+    function marksOn(date) {
+      const out = [];
+      for (const d of data.decisions) {
+        if (d.start === date) out.push(markKind(d, "start", date));
+        if (d.end === date) out.push(markKind(d, "end", date));
+      }
+      return out.slice(0, 6);
+    }
+
+    function glyph(kind) {
+      if (kind === "end-right") {
+        return `<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.2l2.4 2.4 4.6-5.2" fill="none" stroke="#faf7f1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+      }
+      if (kind === "end-wrong") {
+        return `<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3.2 3.2l5.6 5.6M8.8 3.2L3.2 8.8" fill="none" stroke="#faf7f1" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+      }
+      if (kind === "end-half") {
+        return `<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 2v8" stroke="#faf7f1" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+      }
+      return "";
+    }
+
+    function marksHtml(date) {
+      const kinds = marksOn(date);
+      if (!kinds.length) return `<span class="mks"></span>`;
+      return `<span class="mks">${kinds.map((k) => `<span class="mk ${k}">${glyph(k)}</span>`).join("")}</span>`;
+    }
+
+    function inMonth(date, s) {
+      const a = ym(date), b = ym(s);
+      return a.y === b.y && a.m === b.m;
+    }
+
+    function monthHas(s) {
+      return data.decisions.some((d) => inMonth(d.start, s) || inMonth(d.end, s));
+    }
+
+    function listForDay(date) {
+      return data.decisions
+        .filter((d) => d.start === date || d.end === date)
+        .sort((a, b) => a.createdAt - b.createdAt);
+    }
+
+    function urgency(dec, date) {
+      const onEnd = dec.end === date;
+      if (!dec.result && onEnd && date < today()) return 0;
+      if (!dec.result && onEnd && date === today()) return 1;
+      if (!dec.result && onEnd) return 2;
+      if (!dec.result) return 3;
+      if (dec.result === "wrong") return 4;
+      if (dec.result === "half") return 5;
+      return 6;
+    }
+
+    function topForDay(date, n) {
+      const list = listForDay(date).slice().sort((a, b) => {
+        const u = urgency(a, date) - urgency(b, date);
+        return u || a.createdAt - b.createdAt;
+      });
+      return { total: list.length, top: list.slice(0, n) };
+    }
+
+    function dayMark(dec, date) {
+      if (dec.end === date) return markKind(dec, "end", date);
+      return markKind(dec, "start", date);
+    }
+
+    function draftReady() {
+      const named = draft.options.filter((o) => o.name.trim());
+      const chosen = draft.options.find((o) => o.id === draft.chosenId);
+      return (
+        draft.title.trim() &&
+        named.length >= 2 &&
+        chosen &&
+        chosen.name.trim() &&
+        chosen.why.trim() &&
+        draft.start &&
+        draft.end &&
+        draft.end >= draft.start &&
+        draft.check.trim()
+      );
+    }
+
+    function syncDraft() {
+      const t = $("#title");
+      const bg = $("#bg");
+      const check = $("#check");
+      const later = $("#later");
+      const miss = $("#miss");
+      if (t) draft.title = t.value.slice(0, 20);
+      if (bg) draft.background = bg.value;
+      if (check) draft.check = check.value;
+      if (later && ui.paperId) {
+        const d = byId(ui.paperId);
+        if (d && !d.result) d.later = later.value;
+      }
+      if (miss) ui.miss = miss.value;
+      document.querySelectorAll("[data-opt-name]").forEach((el) => {
+        const o = draft.options.find((x) => x.id === el.dataset.optName);
+        if (o) o.name = el.value;
+      });
+      document.querySelectorAll("[data-opt-note]").forEach((el) => {
+        const o = draft.options.find((x) => x.id === el.dataset.optNote);
+        if (o) o.note = el.value;
+      });
+      document.querySelectorAll("[data-opt-pro]").forEach((el) => {
+        const o = draft.options.find((x) => x.id === el.dataset.optPro);
+        if (o) o.pro = el.value;
+      });
+      document.querySelectorAll("[data-opt-con]").forEach((el) => {
+        const o = draft.options.find((x) => x.id === el.dataset.optCon);
+        if (o) o.con = el.value;
+      });
+      document.querySelectorAll("[data-opt-why]").forEach((el) => {
+        const o = draft.options.find((x) => x.id === el.dataset.optWhy);
+        if (o) o.why = el.value;
+      });
+    }
+
+    function header(title, left, right) {
+      return `
+        <header class="top">
+          <div class="top-row">
+            <div class="nav-side">${left || ""}</div>
+            <div class="nav-side">${right || ""}</div>
+          </div>
+          <div class="month-title">${title}</div>
+        </header>
+      `;
+    }
+
+    function weekdayRow() {
+      return `<div class="weekdays">${WD.map((w) => `<span>${w}</span>`).join("")}</div>`;
+    }
+
+    function calCells(days, mode) {
+      const t = today();
+      const { y, m } = ym(ui.anchor);
+      return days.map((date) => {
+        const d = parseIso(date);
+        const out = mode === "month" && (d.getFullYear() !== y || d.getMonth() !== m);
+        const { total, top } = topForDay(date, 3);
+        const has = total > 0;
+        const hot = top.some((x) => urgency(x, date) === 0);
+        const due = !hot && top.some((x) => urgency(x, date) === 1);
+        const cls = [
+          "cell",
+          out ? "out" : "",
+          date === t ? "today" : "",
+          has ? "has" : "",
+        ].join(" ");
+        const count = has
+          ? `<span class="cell-n${hot ? " hot" : due ? " due" : ""}">${total}</span>`
+          : "";
+        const items = top.map((dec) => {
+          const k = dayMark(dec, date);
+          return `<button type="button" class="cell-item" data-open="${dec.id}">
+            <span class="mk ${k}">${glyph(k)}</span>
+            <span class="cell-t">${escapeHtml(dec.title)}</span>
+          </button>`;
+        }).join("");
+        const more = total > 3 ? `<span class="cell-more">+${total - 3}</span>` : "";
+        const inner = `<div class="cell-head"><span class="num">${d.getDate()}</span>${count}</div>${items}${more}`;
+        return `<div class="${cls}" data-day="${date}">${inner}</div>`;
+      }).join("");
+    }
+
+    function weekList(days) {
+      const t = today();
+      return `<div class="week-list">${days.map((date) => {
+        const d = parseIso(date);
+        const wd = WD[(d.getDay() + 6) % 7];
+        const { total, top } = topForDay(date, 20);
+        const has = total > 0;
+        const hot = top.some((x) => urgency(x, date) === 0);
+        const due = !hot && top.some((x) => urgency(x, date) === 1);
+        const cls = [
+          "week-row",
+          date === t ? "today" : "",
+          has ? "has" : "",
+        ].join(" ");
+        const count = has
+          ? `<span class="week-date-n${hot ? " hot" : due ? " due" : ""}">${total}</span>`
+          : "";
+        const items = top.map((dec) => {
+          const k = dayMark(dec, date);
+          return `<button type="button" class="cell-item" data-open="${dec.id}">
+            <span class="mk ${k}">${glyph(k)}</span>
+            <span class="cell-t">${escapeHtml(dec.title)}</span>
+          </button>`;
+        }).join("");
+        return `<div class="${cls}" data-day="${date}">
+          <div class="week-date">
+            <span class="week-date-wd">${wd}</span>
+            <span class="week-date-num">${d.getDate()}</span>
+            ${count}
+          </div>
+          <div class="week-items">${items}</div>
+        </div>`;
+      }).join("")}</div>`;
+    }
+
+    function renderCal() {
+      const mode = ui.mode;
+      const days = mode === "week" ? weekCells(ui.anchor) : monthCells(ui.anchor);
+      const empty = mode === "month" && !monthHas(ui.anchor);
+      const left = `
+        <button class="quiet" type="button" data-act="prev">‹</button>
+        <button class="quiet" type="button" data-act="next">›</button>
+      `;
+      const right = `
+        <button class="quiet ${mode === "month" ? "on" : ""}" type="button" data-act="month">月</button>
+        <button class="quiet ${mode === "week" ? "on" : ""}" type="button" data-act="week">周</button>
+      `;
+      return `
+        ${header(fmtTitle(ui.anchor, mode), left, right)}
+        ${mode === "week" ? "" : weekdayRow()}
+        ${mode === "week" ? weekList(days) : `<div class="grid month-grid">${calCells(days, mode)}</div>`}
+        ${empty ? `<p class="empty-line">把一条会被打分的选择记下</p>` : ""}
+        <div class="dock"><button class="primary" type="button" data-act="compose">记下</button></div>
+      `;
+    }
+
+    function renderDay() {
+      const date = ui.day;
+      const list = listForDay(date);
+      const items = list.map((d) => {
+        const kinds = [];
+        if (d.start === date) kinds.push(markKind(d, "start", date));
+        if (d.end === date) kinds.push(markKind(d, "end", date));
+        const mk = kinds.map((k) => `<span class="mk ${k}">${glyph(k)}</span>`).join("");
+        return `<li>
+          <button type="button" class="day-row" data-open="${d.id}">
+            <span class="mks">${mk}</span>
+            <span class="theme">${escapeHtml(d.title)}</span>
+          </button>
+        </li>`;
+      }).join("");
+      return `
+        ${header(fmtShort(date), `<button class="quiet back" type="button" data-act="back">‹</button>`, "")}
+        ${items ? `<ul class="day-list">${items}</ul>` : `<p class="empty-line">这一天还没有决策</p>`}
+        <div class="dock"><button class="primary" type="button" data-act="compose-day">记下</button></div>
+      `;
+    }
+
+    function optionRow(o) {
+      const on = draft.chosenId === o.id;
+      const open = ui.supp[o.id];
+      const summary = [o.note, o.pro, o.con].some((x) => x && x.trim());
+      return `
+        <div class="opt ${on ? "on" : ""}" data-choose="${o.id}">
+          <div class="opt-top">
+            <span class="radio"><i></i></span>
+            <input class="opt-name" data-opt-name="${o.id}" maxlength="40" placeholder="一条路" value="${escapeHtml(o.name)}" />
+            <button class="supp-btn ${open ? "on" : ""}" type="button" data-supp="${o.id}">补充</button>
+          </div>
+          ${on ? `<div class="why-wrap" data-stop="1">
+            <input class="line-in" data-opt-why="${o.id}" maxlength="80" placeholder="当时为什么选这条" value="${escapeHtml(o.why)}" />
+          </div>` : ""}
+          ${!open && summary && !on ? `<p class="hint-mini">${escapeHtml((o.note || o.pro || o.con).trim())}</p>` : ""}
+          ${open ? `<div class="supp" data-stop="1">
+            <textarea class="area-in" data-opt-note="${o.id}" rows="2" placeholder="说明">${escapeHtml(o.note)}</textarea>
+            <input class="line-in" data-opt-pro="${o.id}" maxlength="80" placeholder="好处" value="${escapeHtml(o.pro)}" />
+            <input class="line-in" data-opt-con="${o.id}" maxlength="80" placeholder="代价" value="${escapeHtml(o.con)}" />
+          </div>` : ""}
+        </div>
+      `;
+    }
+
+    function miniCal() {
+      const focus = draft.end && !inMonth(draft.start, draft.end) && ui.pick === "end"
+        ? draft.end
+        : draft.start || today();
+      const days = monthCells(focus);
+      const { y, m } = ym(focus);
+      return `
+        <div class="mini">
+          ${weekdayRow()}
+          <div class="grid">${days.map((date) => {
+            const d = parseIso(date);
+            const out = d.getFullYear() !== y || d.getMonth() !== m;
+            const span = draft.start && draft.end && date > draft.start && date < draft.end;
+            const disabled = ui.pick === "end" && draft.start && date < draft.start;
+            const cls = [
+              "cell",
+              out ? "out" : "",
+              date === today() ? "today" : "",
+              span ? "span" : "",
+              disabled ? "" : "pickable",
+            ].join(" ");
+            const kinds = [];
+            if (draft.start === date) kinds.push("start-live");
+            if (draft.end === date) kinds.push("end-live");
+            const mk = kinds.map((k) => `<span class="mk ${k}"></span>`).join("");
+            return `<button type="button" class="${cls}" data-pick="${date}" ${disabled ? "disabled" : ""}>
+              <span class="num">${d.getDate()}</span>
+              <span class="mks">${mk}</span>
+            </button>`;
+          }).join("")}</div>
+        </div>
+      `;
+    }
+
+    function renderCompose() {
+      const startOn = ui.pick === "start" ? "on" : "";
+      const endOn = ui.pick === "end" ? "on" : "";
+      return `
+        ${header("记下", `<button class="quiet back" type="button" data-act="back">‹</button>`, "")}
+        <div class="paper">
+          <input class="title-in" id="title" maxlength="20" placeholder="给这条决策起个短名" value="${escapeHtml(draft.title)}" />
+          <button class="fold" type="button" data-act="bg">${ui.bgOpen || draft.background ? "背景" : "背景（可不填）"}</button>
+          ${ui.bgOpen || draft.background ? `<textarea class="area-in" id="bg" rows="3" placeholder="为谁、怎么回事">${escapeHtml(draft.background)}</textarea>` : ""}
+          <span class="lab">选项</span>
+          ${draft.options.map(optionRow).join("")}
+          <button class="add-opt" type="button" data-act="add-opt">再加一条</button>
+          <div class="dates">
+            <button class="date-pick ${startOn}" type="button" data-act="pick-start">
+              <span class="lab">写下</span>
+              <div class="date-val">${fmtShort(draft.start)}</div>
+            </button>
+            <span class="dash">—</span>
+            <button class="date-pick ${endOn}" type="button" data-act="pick-end">
+              <span class="lab">回头看</span>
+              <div class="date-val ${draft.end ? "" : "empty"}">${draft.end ? fmtShort(draft.end) : "选一天"}</div>
+            </button>
+          </div>
+          ${miniCal()}
+          <span class="lab">看什么</span>
+          <input class="line-in" id="check" maxlength="120" placeholder="到那天，看哪件具体的事" value="${escapeHtml(draft.check)}" />
+          <p class="err">${escapeHtml(ui.err)}</p>
+          <div class="actions">
+            <button class="primary" type="button" data-act="save" ${draftReady() ? "" : "disabled"}>记下</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderPaper() {
+      const d = byId(ui.paperId);
+      if (!d) return renderCal();
+      const locked = !!d.result;
+      if (locked) return renderRead(d);
+      const conclude = ui.concludeOpen ? `
+        <span class="lab">对了 / 错了 / 一半</span>
+        <div class="verdicts">
+          ${["right", "wrong", "half"].map((k) =>
+            `<button type="button" data-v="${k}" class="${ui.verdict === k ? "on" : ""}">${VERDICT[k]}</button>`
+          ).join("")}
+        </div>
+        <span class="lab">漏看了什么</span>
+        <input class="line-in" id="miss" maxlength="120" placeholder="${ui.verdict === "right" ? "可以不写" : "当时漏看了什么"}" value="${escapeHtml(ui.miss)}" />
+      ` : "";
+      const canConfirm = ui.concludeOpen && ui.verdict && (ui.verdict === "right" || ui.miss.trim());
+      return `
+        ${header("决策", `<button class="quiet back" type="button" data-act="back">‹</button>`, `<button class="ghost" type="button" data-act="ask-del">删除</button>`)}
+        <div class="paper">
+          <input class="title-in" id="title" maxlength="20" value="${escapeHtml(draft.title)}" />
+          <button class="fold" type="button" data-act="bg">${ui.bgOpen || draft.background ? "背景" : "背景（可不填）"}</button>
+          ${ui.bgOpen || draft.background ? `<textarea class="area-in" id="bg" rows="3">${escapeHtml(draft.background)}</textarea>` : ""}
+          <span class="lab">选项</span>
+          ${draft.options.map(optionRow).join("")}
+          <button class="add-opt" type="button" data-act="add-opt">再加一条</button>
+          <span class="lab">后来</span>
+          <input class="line-in" id="later" maxlength="120" placeholder="后来看到了什么" value="${escapeHtml(d.later || "")}" />
+          <div class="dates">
+            <button class="date-pick ${ui.pick === "start" ? "on" : ""}" type="button" data-act="pick-start">
+              <span class="lab">写下</span>
+              <div class="date-val">${fmtShort(draft.start)}</div>
+            </button>
+            <span class="dash">—</span>
+            <button class="date-pick ${ui.pick === "end" ? "on" : ""}" type="button" data-act="pick-end">
+              <span class="lab">回头看</span>
+              <div class="date-val">${fmtShort(draft.end)}</div>
+            </button>
+          </div>
+          ${miniCal()}
+          <span class="lab">看什么</span>
+          <input class="line-in" id="check" maxlength="120" value="${escapeHtml(draft.check)}" />
+          ${conclude}
+          <p class="err">${escapeHtml(ui.err)}</p>
+          <div class="actions">
+            <button class="primary" type="button" data-act="${ui.concludeOpen ? "confirm-verdict" : "open-conclude"}" ${ui.concludeOpen && !canConfirm ? "disabled" : ""}>写下结论</button>
+          </div>
+        </div>
+        ${ui.confirmDel ? delDialog() : ""}
+      `;
+    }
+
+    function renderRead(d) {
+      const chosen = d.options.find((o) => o.id === d.chosenId);
+      const opts = d.options.map((o) => `
+        <div class="ro-opt ${o.id === d.chosenId ? "on" : ""}">
+          <strong>${escapeHtml(o.name)}</strong>
+          ${o.note ? `<p class="ro-body">${escapeHtml(o.note)}</p>` : ""}
+          ${o.pro ? `<p class="ro-body">好处 · ${escapeHtml(o.pro)}</p>` : ""}
+          ${o.con ? `<p class="ro-body">代价 · ${escapeHtml(o.con)}</p>` : ""}
+          ${o.id === d.chosenId && o.why ? `<p class="ro-body">${escapeHtml(o.why)}</p>` : ""}
+        </div>
+      `).join("");
+      return `
+        ${header("决策", `<button class="quiet back" type="button" data-act="back">‹</button>`, `<button class="ghost" type="button" data-act="ask-del">删除</button>`)}
+        <div class="paper">
+          <p class="ro-title">${escapeHtml(d.title)}</p>
+          ${d.background ? `<p class="ro-body">${escapeHtml(d.background)}</p>` : ""}
+          <span class="lab">选项</span>
+          ${opts}
+          ${d.later ? `<span class="lab">后来</span><p class="ro-body">${escapeHtml(d.later)}</p>` : ""}
+          <p class="ro-body">${fmtShort(d.start)} — ${fmtShort(d.end)}</p>
+          <p class="ro-body">${escapeHtml(d.check)}</p>
+          <p class="stamp ${d.result}">${VERDICT[d.result]}</p>
+          ${d.miss ? `<p class="ro-body">${escapeHtml(d.miss)}</p>` : ""}
+        </div>
+        ${ui.confirmDel ? delDialog() : ""}
+      `;
+    }
+
+    function delDialog() {
+      return `<div class="mask">
+        <div class="dialog" data-stop="1">
+          <p>删掉这条决策？日历上的标记也会一起没。</p>
+          <div class="dialog-acts">
+            <button class="quiet" type="button" data-act="cancel-del">取消</button>
+            <button class="ghost" type="button" data-act="del">删除</button>
+          </div>
+        </div>
+      </div>`;
+    }
+
+    function render() {
+      const shell = $("#shell");
+      shell.className = ui.screen === "cal" ? "shell wide" : "shell";
+      if (ui.screen === "cal") shell.innerHTML = renderCal();
+      else if (ui.screen === "day") shell.innerHTML = renderDay();
+      else if (ui.screen === "compose") shell.innerHTML = renderCompose();
+      else shell.innerHTML = renderPaper();
+      bind();
+    }
+
+    function goCal() {
+      ui.screen = "cal";
+      ui.err = "";
+      ui.concludeOpen = false;
+      ui.confirmDel = false;
+      render();
+    }
+
+    function openCompose(start) {
+      draft = emptyDraft();
+      draft.start = start || today();
+      ui.bgOpen = false;
+      ui.supp = {};
+      ui.pick = "end";
+      ui.err = "";
+      ui.paperId = null;
+      ui.screen = "compose";
+      render();
+      const title = $("#title");
+      if (title) title.focus();
+    }
+
+    function openPaper(id) {
+      const d = byId(id);
+      if (!d) return;
+      ui.paperId = id;
+      ui.screen = "paper";
+      ui.err = "";
+      ui.concludeOpen = false;
+      ui.verdict = "";
+      ui.miss = "";
+      ui.confirmDel = false;
+      ui.bgOpen = !!d.background;
+      ui.supp = {};
+      ui.pick = "end";
+      draft = {
+        title: d.title,
+        background: d.background || "",
+        options: d.options.map((o) => ({ ...o })),
+        chosenId: d.chosenId,
+        start: d.start,
+        end: d.end,
+        check: d.check,
+      };
+      render();
+    }
+
+    function applyDraftTo(d) {
+      const named = draft.options.filter((o) => o.name.trim());
+      if (named.length < 2) return false;
+      const chosen = named.find((o) => o.id === draft.chosenId);
+      if (!chosen || !chosen.why.trim()) return false;
+      if (!draft.title.trim() || !draft.end || draft.end < draft.start || !draft.check.trim()) return false;
+      d.title = draft.title.trim();
+      d.background = draft.background.trim();
+      d.options = named;
+      d.chosenId = chosen.id;
+      d.start = draft.start;
+      d.end = draft.end;
+      d.check = draft.check.trim();
+      return true;
+    }
+
+    function bind() {
+      const shell = $("#shell");
+      shell.onclick = (e) => {
+        if (e.target.classList && e.target.classList.contains("mask")) {
+          ui.confirmDel = false;
+          render();
+          return;
+        }
+        const t = e.target.closest("[data-act], [data-day], [data-open], [data-choose], [data-supp], [data-pick], [data-v]");
+        if (!t) return;
+
+        if (t.dataset.open) {
+          openPaper(t.dataset.open);
+          return;
+        }
+        if (t.dataset.day) {
+          const date = t.dataset.day;
+          if (!listForDay(date).length) {
+            ui.day = date;
+            openCompose(date);
+            return;
+          }
+          ui.day = date;
+          ui.screen = "day";
+          render();
+          return;
+        }
+        if (t.dataset.supp) {
+          e.stopPropagation();
+          syncDraft();
+          const id = t.dataset.supp;
+          ui.supp[id] = !ui.supp[id];
+          render();
+          return;
+        }
+        if (t.dataset.choose) {
+          if (e.target.closest(".supp-btn, .supp, .why-wrap")) return;
+          const id = t.dataset.choose;
+          const fromName = e.target.closest(".opt-name");
+          if (fromName && draft.chosenId === id) return;
+          syncDraft();
+          draft.chosenId = id;
+          render();
+          if (fromName) {
+            const name = $(`[data-opt-name="${id}"]`);
+            if (name) name.focus();
+          } else {
+            const why = $(`[data-opt-why="${id}"]`);
+            if (why) why.focus();
+          }
+          return;
+        }
+        if (t.dataset.pick) {
+          const date = t.dataset.pick;
+          if (ui.pick === "start") {
+            draft.start = date;
+            if (draft.end && draft.end < date) draft.end = date;
+          } else if (!draft.start || date >= draft.start) {
+            draft.end = date;
+          }
+          ui.err = "";
+          render();
+          return;
+        }
+        if (t.dataset.v) {
+          ui.verdict = t.dataset.v;
+          render();
+          const miss = $("#miss");
+          if (miss && t.dataset.v !== "right") miss.focus();
+          return;
+        }
+
+        const act = t.dataset.act;
+        if (act === "prev") {
+          ui.anchor = ui.mode === "week" ? addDays(ui.anchor, -7) : addMonths(ui.anchor, -1);
+          render();
+        } else if (act === "next") {
+          ui.anchor = ui.mode === "week" ? addDays(ui.anchor, 7) : addMonths(ui.anchor, 1);
+          render();
+        } else if (act === "month") {
+          ui.mode = "month";
+          render();
+        } else if (act === "week") {
+          ui.mode = "week";
+          render();
+        } else if (act === "compose") {
+          ui.day = null;
+          openCompose(today());
+        } else if (act === "compose-day") {
+          openCompose(ui.day || today());
+        } else if (act === "back") {
+          if (ui.screen === "paper") {
+            syncDraft();
+            const d = byId(ui.paperId);
+            if (d && !d.result) {
+              if (applyDraftTo(d)) save();
+            } else if (d) save();
+            ui.day = null;
+            ui.paperId = null;
+            goCal();
+          } else if (ui.screen === "compose") {
+            const start = draft.start;
+            if (start && listForDay(start).length) {
+              ui.day = start;
+              ui.screen = "day";
+              ui.err = "";
+              render();
+            } else {
+              ui.day = null;
+              goCal();
+            }
+          } else {
+            ui.day = null;
+            ui.paperId = null;
+            goCal();
+          }
+        } else if (act === "bg") {
+          syncDraft();
+          ui.bgOpen = !ui.bgOpen;
+          render();
+        } else if (act === "add-opt") {
+          syncDraft();
+          draft.options.push({ id: uid(), name: "", note: "", pro: "", con: "", why: "" });
+          render();
+          const names = document.querySelectorAll("[data-opt-name]");
+          const last = names[names.length - 1];
+          if (last) last.focus();
+        } else if (act === "pick-start") {
+          ui.pick = "start";
+          render();
+        } else if (act === "pick-end") {
+          ui.pick = "end";
+          render();
+        } else if (act === "save") {
+          syncDraft();
+          if (!draftReady()) {
+            ui.err = "还差主题、两条路、选中一句原因、回头看，和看什么。";
+            render();
+            return;
+          }
+          const named = draft.options.filter((o) => o.name.trim());
+          data.decisions.push({
+            id: uid(),
+            createdAt: Date.now(),
+            title: draft.title.trim(),
+            background: draft.background.trim(),
+            options: named,
+            chosenId: draft.chosenId,
+            start: draft.start,
+            end: draft.end,
+            check: draft.check.trim(),
+            later: "",
+            result: null,
+            miss: "",
+          });
+          save();
+          ui.anchor = draft.start;
+          goCal();
+        } else if (act === "open-conclude") {
+          syncDraft();
+          const d = byId(ui.paperId);
+          if (d && applyDraftTo(d)) save();
+          ui.concludeOpen = true;
+          render();
+        } else if (act === "confirm-verdict") {
+          syncDraft();
+          const d = byId(ui.paperId);
+          if (!d || !ui.verdict) return;
+          if (ui.verdict !== "right" && !ui.miss.trim()) return;
+          if (!applyDraftTo(d)) return;
+          d.result = ui.verdict;
+          d.miss = ui.miss.trim();
+          save();
+          goCal();
+        } else if (act === "ask-del") {
+          ui.confirmDel = true;
+          render();
+        } else if (act === "cancel-del") {
+          ui.confirmDel = false;
+          render();
+        } else if (act === "del") {
+          data.decisions = data.decisions.filter((x) => x.id !== ui.paperId);
+          save();
+          ui.paperId = null;
+          ui.confirmDel = false;
+          goCal();
+        }
+      };
+
+      shell.oninput = () => {
+        syncDraft();
+        const saveBtn = shell.querySelector("[data-act=save]");
+        if (saveBtn) saveBtn.disabled = !draftReady();
+        const confirmBtn = shell.querySelector("[data-act=confirm-verdict]");
+        if (confirmBtn) {
+          confirmBtn.disabled = !(ui.verdict && (ui.verdict === "right" || ui.miss.trim()));
+        }
+        const t = $("#title");
+        if (t && t.value.length > 20) t.value = t.value.slice(0, 20);
+      };
+
+      shell.onkeydown = (e) => {
+        if (e.key === "Enter" && e.target.matches(".opt-name, .title-in, .line-in")) {
+          e.preventDefault();
+        }
+      };
+    }
+
+    render();
+  </script>
+</body>
+</html>
