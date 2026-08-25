@@ -1,15 +1,39 @@
 const BASE = "https://api.qoder.com/api/v1/cloud";
 
-module.exports = async function handler(req, res) {
+function pathParts(req) {
   const raw = req.query.path;
-  const parts = Array.isArray(raw) ? raw : raw ? [raw] : [];
-  if (!parts.length || parts.some((p) => !p || p.includes("..") || p.includes("/"))) {
+  let parts = [];
+  if (Array.isArray(raw)) {
+    parts = raw.flatMap((p) => String(p).split("/"));
+  } else if (typeof raw === "string" && raw) {
+    parts = raw.split("/");
+  }
+
+  if (!parts.length) {
+    const u = new URL(req.url || "/", "http://localhost");
+    let pathname = u.pathname || "";
+    if (pathname.includes("/api/qca/")) {
+      pathname = pathname.replace(/^.*\/api\/qca\//, "");
+    } else if (pathname.includes("/api/qca-proxy")) {
+      pathname = "";
+    } else {
+      pathname = pathname.replace(/^\//, "");
+    }
+    if (pathname) parts = pathname.split("/");
+  }
+
+  return parts.map((p) => decodeURIComponent(p)).filter((p) => p && p !== "." && p !== "..");
+}
+
+module.exports = async function handler(req, res) {
+  const parts = pathParts(req);
+  if (!parts.length) {
     res.status(400).json({ error: "bad path" });
     return;
   }
 
   const url = new URL(BASE + "/" + parts.map(encodeURIComponent).join("/"));
-  for (const [key, value] of Object.entries(req.query)) {
+  for (const [key, value] of Object.entries(req.query || {})) {
     if (key === "path") continue;
     const list = Array.isArray(value) ? value : [value];
     for (const item of list) {
