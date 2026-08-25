@@ -585,6 +585,10 @@
     .stamp.wrong { color: var(--red); }
     .stamp.half { color: var(--gold); }
 
+    .note { padding: 10px 0; border-top: 1px solid var(--line); }
+    .note-date { color: var(--faint); font-size: 11px; letter-spacing: 0.12em; }
+    .note-text { color: var(--muted); font-size: 15px; margin: 6px 0 0; white-space: pre-wrap; }
+
     .mask {
       position: fixed;
       inset: 0;
@@ -1316,21 +1320,36 @@
           ${o.con ? `<p class="ro-body">代价 · ${escapeHtml(o.con)}</p>` : ""}
         </div>
       `).join("");
-      const conclude = !d.result && ui.concludeOpen ? `
+      const conclude = ui.concludeOpen ? `
         <span class="lab">对了 / 错了 / 一半</span>
         <div class="verdicts">
           ${["right", "wrong", "half"].map((k) =>
             `<button type="button" data-v="${k}" class="${ui.verdict === k ? "on" : ""}">${VERDICT[k]}</button>`
           ).join("")}
         </div>
-        <span class="lab">漏看了什么</span>
-        <input class="line-in" id="miss" maxlength="120" placeholder="${ui.verdict === "right" ? "可以不写" : "当时漏看了什么"}" value="${escapeHtml(ui.miss)}" />
+        <span class="lab">总结</span>
+        <input class="line-in" id="miss" maxlength="120" placeholder="写下这次的判断依据（可不写）" value="${escapeHtml(ui.miss)}" />
+        <div class="actions">
+          <button class="primary" type="button" data-act="confirm-verdict" ${ui.verdict ? "" : "disabled"}>记下结论</button>
+          <button class="quiet" type="button" data-act="cancel-conclude">取消</button>
+        </div>
       ` : "";
-      const canConfirm = ui.verdict && (ui.verdict === "right" || ui.miss.trim());
       const right = d.result
-        ? `<button class="ghost" type="button" data-act="ask-del">删除</button>`
+        ? `<button class="quiet" type="button" data-act="re-conclude">改结论</button>
+          <button class="ghost" type="button" data-act="ask-del">删除</button>`
         : `<button class="quiet" type="button" data-act="edit">编辑</button>
           <button class="ghost" type="button" data-act="ask-del">删除</button>`;
+      const notes = d.result ? `
+        <span class="lab">留言</span>
+        ${(d.notes || []).map((n) => `
+          <div class="note">
+            <p class="note-date">${escapeHtml(fmtShort(iso(new Date(n.at))))}</p>
+            <p class="note-text">${escapeHtml(n.text)}</p>
+          </div>
+        `).join("")}
+        <textarea class="area-in" id="note-in" rows="2" maxlength="200" placeholder="想补充点什么"></textarea>
+        <button class="add-opt" type="button" data-act="add-note" disabled>追加</button>
+      ` : "";
       return `
         ${header("决策", `<button class="quiet back" type="button" data-act="back" title="返回">‹</button>`, right)}
         <div class="paper">
@@ -1345,12 +1364,14 @@
           ${d.result ? `
             <p class="stamp ${d.result}">${VERDICT[d.result]}</p>
             ${d.miss ? `<p class="ro-body">${escapeHtml(d.miss)}</p>` : ""}
-          ` : `
-            ${conclude}
+          ` : ""}
+          ${conclude}
+          ${!d.result && !ui.concludeOpen ? `
             <div class="actions">
-              <button class="primary" type="button" data-act="${ui.concludeOpen ? "confirm-verdict" : "open-conclude"}" ${ui.concludeOpen && !canConfirm ? "disabled" : ""}>${ui.concludeOpen ? "记下结论" : "写下结论"}</button>
+              <button class="primary" type="button" data-act="open-conclude">写下结论</button>
             </div>
-          `}
+          ` : ""}
+          ${notes}
         </div>
         ${ui.confirmDel ? delDialog() : ""}
       `;
@@ -1619,11 +1640,31 @@
         } else if (act === "open-conclude") {
           ui.concludeOpen = true;
           render();
+        } else if (act === "re-conclude") {
+          const d = byId(ui.paperId);
+          if (!d || !d.result) return;
+          ui.concludeOpen = true;
+          ui.verdict = d.result;
+          ui.miss = d.miss || "";
+          render();
+        } else if (act === "cancel-conclude") {
+          ui.concludeOpen = false;
+          ui.verdict = "";
+          ui.miss = "";
+          render();
+        } else if (act === "add-note") {
+          const d = byId(ui.paperId);
+          const box = $("#note-in");
+          const text = box ? box.value.trim() : "";
+          if (!d || !d.result || !text) return;
+          if (!Array.isArray(d.notes)) d.notes = [];
+          d.notes.push({ id: uid(), at: Date.now(), text });
+          save();
+          render();
         } else if (act === "confirm-verdict") {
           syncDraft();
           const d = byId(ui.paperId);
           if (!d || !ui.verdict) return;
-          if (ui.verdict !== "right" && !ui.miss.trim()) return;
           d.result = ui.verdict;
           d.miss = ui.miss.trim();
           save();
@@ -1655,9 +1696,10 @@
         const saveBtn = shell.querySelector("[data-act=save]");
         if (saveBtn) saveBtn.disabled = !draftReady();
         const confirmBtn = shell.querySelector("[data-act=confirm-verdict]");
-        if (confirmBtn) {
-          confirmBtn.disabled = !(ui.verdict && (ui.verdict === "right" || ui.miss.trim()));
-        }
+        if (confirmBtn) confirmBtn.disabled = !ui.verdict;
+        const noteBtn = shell.querySelector("[data-act=add-note]");
+        const noteBox = $("#note-in");
+        if (noteBtn) noteBtn.disabled = !(noteBox && noteBox.value.trim());
         const t = $("#title");
         if (t && t.value.length > 20) t.value = t.value.slice(0, 20);
       };
