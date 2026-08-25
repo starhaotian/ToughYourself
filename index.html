@@ -260,15 +260,36 @@
     .mk svg { width: 7px; height: 7px; display: block; }
 
     .mk.start-live { background: var(--gray); }
-    .mk.end-live { box-sizing: border-box; border: 1.5px dashed var(--gray); background: transparent; }
-    .mk.end-due { box-sizing: border-box; border: 2px dashed var(--gold); background: transparent; }
-    .mk.end-over { box-sizing: border-box; border: 2px dashed var(--red); background: transparent; }
+    .mk.end-live, .mk.end-due, .mk.end-over {
+      box-sizing: border-box;
+      background: transparent;
+      position: relative;
+    }
+    .mk.end-live { border: 1.5px solid var(--gray); }
+    .mk.end-due { border: 1.7px solid var(--gold); }
+    .mk.end-over { border: 1.7px solid var(--red); }
+    .mk.end-live::after, .mk.end-due::after, .mk.end-over::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 2.5px;
+      height: 2.5px;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+    }
+    .mk.end-live::after { background: var(--gray); }
+    .mk.end-due::after { background: var(--gold); }
+    .mk.end-over::after { background: var(--red); }
     .mk.start-right, .mk.end-right { background: var(--green); }
     .mk.start-wrong, .mk.end-wrong { background: var(--red); }
     .mk.start-half, .mk.end-half { background: var(--gold); }
 
     .week-grid .cell-item .mk { width: 10px; height: 10px; }
     .week-grid .cell-item .mk svg { width: 8px; height: 8px; display: block; }
+    .week-grid .cell-item .mk.end-live::after,
+    .week-grid .cell-item .mk.end-due::after,
+    .week-grid .cell-item .mk.end-over::after { width: 3px; height: 3px; }
 
     .week-list {
       display: flex;
@@ -338,6 +359,9 @@
       margin-top: 4px;
     }
     .week-row .mk svg { width: 9px; height: 9px; display: block; }
+    .week-row .mk.end-live::after,
+    .week-row .mk.end-due::after,
+    .week-row .mk.end-over::after { width: 3.5px; height: 3.5px; }
 
     .mini .grid { gap: 0; }
     .mini .cell {
@@ -570,6 +594,8 @@
     .mini .cell.pickable:hover { background: #ece6da; }
     .mini .num { font-size: 12px; }
     .mini .mk { width: 6px; height: 6px; }
+    .mini .mk.end-live { border-width: 1px; }
+    .mini .mk.end-live::after { width: 1.5px; height: 1.5px; }
     .mini .mk svg { display: none; }
 
     .verdicts {
