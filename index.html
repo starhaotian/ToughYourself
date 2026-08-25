@@ -489,6 +489,18 @@
     }
     .opt.on .radio i { display: block; }
 
+    .opt-num {
+      display: inline-block;
+      width: 16px;
+      text-align: center;
+      color: var(--faint);
+      font-family: var(--serif);
+      font-size: 14px;
+      font-weight: 400;
+      flex-shrink: 0;
+    }
+    .opt.on .opt-num, .ro-opt.on .opt-num { color: var(--muted); }
+
     .opt-name {
       flex: 1;
       background: transparent;
@@ -506,9 +518,9 @@
     }
     .supp-btn:hover, .supp-btn.on { color: var(--muted); }
 
-    .supp { padding: 8px 0 4px 28px; }
+    .supp { padding: 8px 0 4px 54px; }
     .supp .line-in { font-size: 13px; }
-    .hint-mini { color: var(--faint); font-size: 12px; margin: 4px 0 8px 28px; }
+    .hint-mini { color: var(--faint); font-size: 12px; margin: 4px 0 8px 54px; }
 
     .add-opt {
       color: var(--muted);
@@ -1216,7 +1228,7 @@
       return !!(o && ((o.pro || "").trim() || (o.con || "").trim()));
     }
 
-    function optionRow(o) {
+    function optionRow(o, i) {
       const on = draft.chosenId === o.id;
       const filled = [o.pro, o.con].some((x) => x && x.trim());
       const open = suppOpen(o.id);
@@ -1224,6 +1236,7 @@
         <div class="opt ${on ? "on" : ""}" data-choose="${o.id}">
           <div class="opt-top">
             <span class="radio"><i></i></span>
+            <span class="opt-num">${i + 1}</span>
             <input class="opt-name" data-opt-name="${o.id}" maxlength="40" placeholder="一条路" value="${escapeHtml(o.name)}" />
             <button class="supp-btn ${open ? "on" : ""}" type="button" data-supp="${o.id}">补充</button>
           </div>
@@ -1342,9 +1355,9 @@
 
     function renderRead(d) {
       const chosen = d.options.find((o) => o.id === d.chosenId);
-      const opts = d.options.map((o) => `
+      const opts = d.options.map((o, i) => `
         <div class="ro-opt ${o.id === d.chosenId ? "on" : ""}">
-          <strong>${escapeHtml(o.name)}</strong>
+          <strong><span class="opt-num">${i + 1}</span>${escapeHtml(o.name)}</strong>
           ${o.pro ? `<p class="ro-body">好处 · ${escapeHtml(o.pro)}</p>` : ""}
           ${o.con ? `<p class="ro-body">代价 · ${escapeHtml(o.con)}</p>` : ""}
         </div>
