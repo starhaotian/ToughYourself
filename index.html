@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <link rel="icon" type="image/png" sizes="64x64" href="favicon.png" />
   <title>决策</title>
   <style>
     :root {
@@ -53,6 +54,27 @@
       width: min(1120px, calc(100vw - 32px));
       padding-left: 16px;
       padding-right: 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0 0 24px;
+    }
+
+    .brand-logo {
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      display: block;
+    }
+
+    .brand-name {
+      font-family: var(--serif);
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
     }
 
     header.top {
@@ -1144,7 +1166,14 @@
             ? `<button class="quiet" type="button" data-act="to-login">登录</button>`
             : ""}
       `;
+      const brand = `
+        <div class="brand">
+          <img class="brand-logo" src="logo.png" alt="ToughYourself" />
+          <span class="brand-name">ToughYourself</span>
+        </div>
+      `;
       return `
+        ${brand}
         ${header(fmtTitle(ui.anchor, mode), left, right)}
         ${mode === "week" ? "" : weekdayRow()}
         ${mode === "week" ? weekList(days) : `<div class="grid month-grid">${calCells(days, mode)}</div>`}
