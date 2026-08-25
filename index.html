@@ -674,17 +674,21 @@
 </head>
 <body>
   <div class="shell" id="shell"><p class="empty-line">载入中…</p></div>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script
+    src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js"
+    integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz"
+    crossorigin="anonymous"
+  ></script>
   <script>
     const KEY = "judgment.v2";
-    const KEY_CLOUD = "judgment.cloud.v2";
 
     // ====== 部署配置：换成你自己的 Supabase 项目（步骤见 README）======
-    const SUPABASE_URL = "https://YOUR_PROJECT.supabase.co";
-    const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+    const SUPABASE_URL = "https://lydqeymisbweiwflxhii.supabase.co";
+    const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_6mILqOm_8PkH2YGu28fhVA_HfX-mU6M";
     // ================================================================
     const CLOUD_READY =
-      /^https:\/\/[\w-]+\.supabase\.co\/?$/.test(SUPABASE_URL) && SUPABASE_ANON_KEY.length > 30;
+      /^https:\/\/[\w-]+\.supabase\.co\/?$/.test(SUPABASE_URL) &&
+      SUPABASE_PUBLISHABLE_KEY.length > 30;
     const WD = ["一", "二", "三", "四", "五", "六", "日"];
     const VERDICT = { right: "对了", wrong: "错了", half: "一半" };
 
@@ -793,8 +797,13 @@
       return { decisions: [] };
     }
 
+    function cloudKey(id) {
+      return `judgment.cloud.v2.${id}`;
+    }
+
     function save() {
-      localStorage.setItem(authMode === "cloud" ? KEY_CLOUD : KEY, JSON.stringify(data));
+      const key = authMode === "cloud" && userId ? cloudKey(userId) : KEY;
+      localStorage.setItem(key, JSON.stringify(data));
       if (authMode === "cloud") cloudSave();
     }
 
@@ -823,6 +832,8 @@
     }
 
     async function cloudSave() {
+      const savingUserId = userId;
+      if (!savingUserId) return;
       cloudDirty = true;
       if (cloudBusy) return;
       cloudBusy = true;
@@ -831,12 +842,18 @@
       try {
         while (cloudDirty) {
           cloudDirty = false;
+          if (authMode !== "cloud" || userId !== savingUserId) {
+            cloudDirty = authMode === "cloud" && !!userId;
+            return;
+          }
           const payload = {
-            user_id: userId,
+            user_id: savingUserId,
             data: JSON.parse(JSON.stringify(data)),
             updated_at: new Date().toISOString(),
           };
-          const { error } = await sb.from("decisions").upsert(payload);
+          const { error } = await sb
+            .from("decisions")
+            .upsert(payload, { onConflict: "user_id" });
           if (error) {
             fails += 1;
             console.error("sync failed:", error.message);
@@ -849,6 +866,7 @@
         setSync("ok");
       } finally {
         cloudBusy = false;
+        if (cloudDirty && authMode === "cloud" && userId) cloudSave();
       }
     }
 
@@ -1659,7 +1677,9 @@
     async function loginGoogle() {
       const { error } = await sb.auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo: window.location.href },
+        options: {
+          redirectTo: new URL(window.location.pathname, window.location.origin).href,
+        },
       });
       if (error) {
         loginErr = "登录没成功：" + (error.message || "请稍后再试");
@@ -1680,7 +1700,8 @@
       userId = session.user.id;
       userEmail = session.user.email || "";
       loginErr = "";
-      data = loadKey(KEY_CLOUD);
+      const userCloudKey = cloudKey(userId);
+      data = loadKey(userCloudKey);
       setSync("busy");
       render();
       const { data: row, error } = await sb
@@ -1696,7 +1717,7 @@
       if (row && row.data && Array.isArray(row.data.decisions)) {
         if (JSON.stringify(row.data) !== JSON.stringify(data)) {
           data = row.data;
-          localStorage.setItem(KEY_CLOUD, JSON.stringify(data));
+          localStorage.setItem(userCloudKey, JSON.stringify(data));
           render();
         }
       } else {
@@ -1704,7 +1725,7 @@
         const local = loadKey(KEY);
         if (local.decisions.length) {
           data = local;
-          localStorage.setItem(KEY_CLOUD, JSON.stringify(data));
+          localStorage.setItem(userCloudKey, JSON.stringify(data));
           cloudSave();
         }
       }
@@ -1721,7 +1742,17 @@
         enterLocal();
         return;
       }
-      sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+      sb.auth.onAuthStateChange((evt, session) => {
+        // Supabase 建议不要在回调栈内继续调用其异步 API，移到下一轮事件循环。
+        setTimeout(() => {
+          if (session && session.user && (authMode !== "cloud" || userId !== session.user.id)) {
+            enterCloud(session);
+          } else if (evt === "SIGNED_OUT" && authMode === "cloud") {
+            enterLocal();
+          }
+        }, 0);
+      });
       let session = null;
       try {
         const res = await sb.auth.getSession();
@@ -1731,9 +1762,6 @@
         await enterCloud(session);
         return;
       }
-      sb.auth.onAuthStateChange((evt, session) => {
-        if (session && session.user && authMode !== "cloud") enterCloud(session);
-      });
       renderLogin();
     }
 
