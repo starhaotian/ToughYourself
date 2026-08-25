@@ -605,6 +605,60 @@
 
     .err { color: var(--red); font-size: 13px; margin-top: 12px; min-height: 1.2em; }
 
+    .tagline {
+      margin: 6px 0 46px;
+      color: var(--muted);
+      font-family: var(--serif);
+      font-size: 15px;
+      line-height: 1.9;
+      letter-spacing: 0.04em;
+      text-align: center;
+    }
+
+    .login {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .gbtn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 11px 26px;
+      font-size: 15px;
+      letter-spacing: 0.04em;
+      box-shadow: 0 1px 2px rgba(28, 24, 20, 0.06);
+    }
+    .gbtn:hover { border-color: var(--muted); }
+    .gbtn:disabled { opacity: 0.5; cursor: wait; }
+    .gbtn svg { width: 18px; height: 18px; display: block; }
+
+    .login-note {
+      margin-top: 42px;
+      text-align: center;
+      color: var(--faint);
+      font-size: 12px;
+      line-height: 1.8;
+    }
+
+    .login-err { text-align: center; }
+
+    .sync {
+      text-align: center;
+      color: var(--faint);
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      margin-top: 12px;
+      min-height: 1.2em;
+    }
+    .sync.busy { color: var(--muted); }
+    .sync.err { color: var(--red); }
+
     @media (max-width: 720px) {
       .month-grid .cell.has { min-height: 108px; padding: 6px 5px 5px; }
       .cell-t { font-size: 11px; }
@@ -619,9 +673,18 @@
   </style>
 </head>
 <body>
-  <div class="shell" id="shell"></div>
+  <div class="shell" id="shell"><p class="empty-line">载入中…</p></div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
     const KEY = "judgment.v2";
+    const KEY_CLOUD = "judgment.cloud.v2";
+
+    // ====== 部署配置：换成你自己的 Supabase 项目（步骤见 README）======
+    const SUPABASE_URL = "https://YOUR_PROJECT.supabase.co";
+    const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+    // ================================================================
+    const CLOUD_READY =
+      /^https:\/\/[\w-]+\.supabase\.co\/?$/.test(SUPABASE_URL) && SUPABASE_ANON_KEY.length > 30;
     const WD = ["一", "二", "三", "四", "五", "六", "日"];
     const VERDICT = { right: "对了", wrong: "错了", half: "一半" };
 
@@ -722,16 +785,71 @@
         .replace(/"/g, "&quot;");
     }
 
-    function load() {
+    function loadKey(key) {
       try {
-        const raw = JSON.parse(localStorage.getItem(KEY) || "null");
+        const raw = JSON.parse(localStorage.getItem(key) || "null");
         if (raw && Array.isArray(raw.decisions)) return raw;
       } catch (_) {}
       return { decisions: [] };
     }
 
     function save() {
-      localStorage.setItem(KEY, JSON.stringify(data));
+      localStorage.setItem(authMode === "cloud" ? KEY_CLOUD : KEY, JSON.stringify(data));
+      if (authMode === "cloud") cloudSave();
+    }
+
+    // ---- 登录与云端同步（Supabase；配置见文件顶部「部署配置」）----
+    let sb = null;
+    let authMode = "boot"; // boot | local | cloud
+    let userId = null;
+    let userEmail = "";
+    let loginErr = "";
+    let cloudBusy = false;
+    let cloudDirty = false;
+
+    function syncText() {
+      if (ui.sync === "busy") return "同步中…";
+      if (ui.sync === "err") return "同步失败，已暂存本机";
+      return "已同步";
+    }
+
+    function setSync(state) {
+      ui.sync = state;
+      const el = $("#sync");
+      if (el) {
+        el.className = "sync " + (state === "ok" ? "" : state);
+        el.textContent = syncText();
+      }
+    }
+
+    async function cloudSave() {
+      cloudDirty = true;
+      if (cloudBusy) return;
+      cloudBusy = true;
+      setSync("busy");
+      let fails = 0;
+      try {
+        while (cloudDirty) {
+          cloudDirty = false;
+          const payload = {
+            user_id: userId,
+            data: JSON.parse(JSON.stringify(data)),
+            updated_at: new Date().toISOString(),
+          };
+          const { error } = await sb.from("decisions").upsert(payload);
+          if (error) {
+            fails += 1;
+            console.error("sync failed:", error.message);
+            setSync("err");
+            if (fails >= 3) return;
+            await new Promise((r) => setTimeout(r, 1500 * fails));
+            cloudDirty = true;
+          }
+        }
+        setSync("ok");
+      } finally {
+        cloudBusy = false;
+      }
     }
 
     function emptyOptions() {
@@ -753,8 +871,9 @@
       };
     }
 
-    let data = load();
+    let data = { decisions: [] };
     let ui = {
+      sync: "",
       screen: "cal",
       mode: "month",
       anchor: today(),
@@ -999,6 +1118,11 @@
       const right = `
         <button class="quiet ${mode === "month" ? "on" : ""}" type="button" data-act="month">月</button>
         <button class="quiet ${mode === "week" ? "on" : ""}" type="button" data-act="week">周</button>
+        ${authMode === "cloud"
+          ? `<button class="quiet" type="button" data-act="logout" title="${escapeHtml(userEmail)}">退出</button>`
+          : CLOUD_READY
+            ? `<button class="quiet" type="button" data-act="to-login">登录</button>`
+            : ""}
       `;
       return `
         ${header(fmtTitle(ui.anchor, mode), left, right)}
@@ -1006,6 +1130,7 @@
         ${mode === "week" ? weekList(days) : `<div class="grid month-grid">${calCells(days, mode)}</div>`}
         ${empty ? `<p class="empty-line">把一条会被打分的选择记下</p>` : ""}
         <div class="dock"><button class="primary" type="button" data-act="compose">记下</button></div>
+        ${authMode === "cloud" ? `<p class="sync ${ui.sync === "busy" || ui.sync === "err" ? ui.sync : ""}" id="sync">${syncText()}</p>` : ""}
       `;
     }
 
@@ -1473,6 +1598,10 @@
           ui.paperId = null;
           ui.confirmDel = false;
           goCal();
+        } else if (act === "logout") {
+          logout();
+        } else if (act === "to-login") {
+          renderLogin();
         }
       };
 
@@ -1495,7 +1624,120 @@
       };
     }
 
-    render();
+    // ---- 登录（Google，经 Supabase OAuth）与启动 ----
+    const G_ICON = `<svg viewBox="0 0 18 18" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.91c1.7-1.57 2.69-3.88 2.69-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.91-2.26c-.8.54-1.84.86-3.05.86-2.34 0-4.32-1.58-5.03-3.71H.96v2.33A8.99 8.99 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.97 10.71A5.41 5.41 0 0 1 3.68 9c0-.59.1-1.16.28-1.71V5.96H.96A8.99 8.99 0 0 0 0 9c0 1.45.35 2.83.96 4.04l3.01-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.59C13.46.89 11.43 0 9 0A8.99 8.99 0 0 0 .96 5.96l3.01 2.33C4.68 6.16 6.66 3.58 9 3.58z"/></svg>`;
+
+    function renderLogin() {
+      const shell = $("#shell");
+      shell.className = "shell";
+      shell.innerHTML = `
+        <header class="top">
+          <div class="top-row"></div>
+          <div class="month-title">决策</div>
+        </header>
+        <p class="tagline">用日历记下会被打分的选择，<br/>到期回头看对了、错了、还是一半。</p>
+        <div class="login">
+          <button class="gbtn" type="button" data-login="google">${G_ICON}<span>使用 Google 登录</span></button>
+          <button class="ghost" type="button" data-login="local">不登录，仅本机使用</button>
+        </div>
+        <p class="login-note">登录后，决策会同步到云端，换设备也不丢。<br/>仅本机使用时，数据只存在这台设备的浏览器里。</p>
+        <p class="err login-err">${escapeHtml(loginErr)}</p>
+      `;
+      shell.onclick = async (e) => {
+        const t = e.target.closest("[data-login]");
+        if (!t) return;
+        if (t.dataset.login === "google") {
+          t.disabled = true;
+          await loginGoogle();
+          t.disabled = false;
+        } else {
+          enterLocal();
+        }
+      };
+    }
+
+    async function loginGoogle() {
+      const { error } = await sb.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: window.location.href },
+      });
+      if (error) {
+        loginErr = "登录没成功：" + (error.message || "请稍后再试");
+        renderLogin();
+      }
+    }
+
+    function enterLocal() {
+      authMode = "local";
+      userId = null;
+      userEmail = "";
+      data = loadKey(KEY);
+      goCal();
+    }
+
+    async function enterCloud(session) {
+      authMode = "cloud";
+      userId = session.user.id;
+      userEmail = session.user.email || "";
+      loginErr = "";
+      data = loadKey(KEY_CLOUD);
+      setSync("busy");
+      render();
+      const { data: row, error } = await sb
+        .from("decisions")
+        .select("data")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (error) {
+        console.error("load failed:", error.message);
+        setSync("err");
+        return;
+      }
+      if (row && row.data && Array.isArray(row.data.decisions)) {
+        if (JSON.stringify(row.data) !== JSON.stringify(data)) {
+          data = row.data;
+          localStorage.setItem(KEY_CLOUD, JSON.stringify(data));
+          render();
+        }
+      } else {
+        // 首次登录：把本机未登录时记下的数据带上云端
+        const local = loadKey(KEY);
+        if (local.decisions.length) {
+          data = local;
+          localStorage.setItem(KEY_CLOUD, JSON.stringify(data));
+          cloudSave();
+        }
+      }
+      setSync("ok");
+    }
+
+    async function logout() {
+      try { await sb.auth.signOut(); } catch (_) {}
+      enterLocal();
+    }
+
+    async function init() {
+      if (!CLOUD_READY || !window.supabase) {
+        enterLocal();
+        return;
+      }
+      sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      let session = null;
+      try {
+        const res = await sb.auth.getSession();
+        session = res.data && res.data.session;
+      } catch (_) {}
+      if (session && session.user) {
+        await enterCloud(session);
+        return;
+      }
+      sb.auth.onAuthStateChange((evt, session) => {
+        if (session && session.user && authMode !== "cloud") enterCloud(session);
+      });
+      renderLogin();
+    }
+
+    init();
   </script>
 </body>
 </html>
