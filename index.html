@@ -91,10 +91,16 @@
       border-bottom: 1px solid var(--ink);
       padding-bottom: 2px;
     }
+    button.arrow {
+      min-width: 44px;
+      min-height: 44px;
+      font-size: 24px;
+      line-height: 1;
+    }
     button.back {
       min-width: 44px;
       min-height: 44px;
-      font-size: 22px;
+      font-size: 26px;
       line-height: 1;
       margin-left: -8px;
     }
@@ -416,6 +422,7 @@
       background: var(--paper);
     }
     .line-in:focus, .area-in:focus { border-color: var(--ink); }
+    .area-in:disabled { opacity: 0.55; }
 
     .fold {
       color: var(--muted);
@@ -477,10 +484,8 @@
     }
     .supp-btn:hover, .supp-btn.on { color: var(--muted); }
 
-    .supp, .why-wrap { padding: 8px 0 4px 28px; }
-    .why-wrap .line-in { font-size: 15px; }
-    .supp .line-in, .supp .area-in { font-size: 13px; }
-    .supp .area-in { min-height: 56px; margin-bottom: 8px; }
+    .supp { padding: 8px 0 4px 28px; }
+    .supp .line-in { font-size: 13px; }
     .hint-mini { color: var(--faint); font-size: 12px; margin: 4px 0 8px 28px; }
 
     .add-opt {
@@ -897,6 +902,7 @@
       anchor: today(),
       day: null,
       paperId: null,
+      editing: false,
       pick: "end",
       bgOpen: false,
       supp: {},
@@ -1010,23 +1016,19 @@
       const t = $("#title");
       const bg = $("#bg");
       const check = $("#check");
-      const later = $("#later");
+      const why = $("#why");
       const miss = $("#miss");
       if (t) draft.title = t.value.slice(0, 20);
       if (bg) draft.background = bg.value;
       if (check) draft.check = check.value;
-      if (later && ui.paperId) {
-        const d = byId(ui.paperId);
-        if (d && !d.result) d.later = later.value;
+      if (why) {
+        const chosen = draft.options.find((o) => o.id === draft.chosenId);
+        if (chosen) chosen.why = why.value;
       }
       if (miss) ui.miss = miss.value;
       document.querySelectorAll("[data-opt-name]").forEach((el) => {
         const o = draft.options.find((x) => x.id === el.dataset.optName);
         if (o) o.name = el.value;
-      });
-      document.querySelectorAll("[data-opt-note]").forEach((el) => {
-        const o = draft.options.find((x) => x.id === el.dataset.optNote);
-        if (o) o.note = el.value;
       });
       document.querySelectorAll("[data-opt-pro]").forEach((el) => {
         const o = draft.options.find((x) => x.id === el.dataset.optPro);
@@ -1035,10 +1037,6 @@
       document.querySelectorAll("[data-opt-con]").forEach((el) => {
         const o = draft.options.find((x) => x.id === el.dataset.optCon);
         if (o) o.con = el.value;
-      });
-      document.querySelectorAll("[data-opt-why]").forEach((el) => {
-        const o = draft.options.find((x) => x.id === el.dataset.optWhy);
-        if (o) o.why = el.value;
       });
     }
 
@@ -1130,8 +1128,8 @@
       const days = mode === "week" ? weekCells(ui.anchor) : monthCells(ui.anchor);
       const empty = mode === "month" && !monthHas(ui.anchor);
       const left = `
-        <button class="quiet" type="button" data-act="prev">‹</button>
-        <button class="quiet" type="button" data-act="next">›</button>
+        <button class="quiet arrow" type="button" data-act="prev" title="${mode === "week" ? "上一周" : "上个月"}">‹</button>
+        <button class="quiet arrow" type="button" data-act="next" title="${mode === "week" ? "下一周" : "下个月"}">›</button>
       `;
       const right = `
         <button class="quiet ${mode === "month" ? "on" : ""}" type="button" data-act="month">月</button>
@@ -1168,16 +1166,27 @@
         </li>`;
       }).join("");
       return `
-        ${header(fmtShort(date), `<button class="quiet back" type="button" data-act="back">‹</button>`, "")}
+        ${header(fmtShort(date), `<button class="quiet back" type="button" data-act="back" title="返回">‹</button>`, "")}
         ${items ? `<ul class="day-list">${items}</ul>` : `<p class="empty-line">这一天还没有决策</p>`}
         <div class="dock"><button class="primary" type="button" data-act="compose-day">记下</button></div>
       `;
     }
 
+    function whyOfChosen() {
+      const chosen = draft.options.find((o) => o.id === draft.chosenId);
+      return chosen ? chosen.why || "" : "";
+    }
+
+    function suppOpen(id) {
+      if (id in ui.supp) return ui.supp[id];
+      const o = draft.options.find((x) => x.id === id);
+      return !!(o && ((o.pro || "").trim() || (o.con || "").trim()));
+    }
+
     function optionRow(o) {
       const on = draft.chosenId === o.id;
-      const open = ui.supp[o.id];
-      const summary = [o.note, o.pro, o.con].some((x) => x && x.trim());
+      const filled = [o.pro, o.con].some((x) => x && x.trim());
+      const open = suppOpen(o.id);
       return `
         <div class="opt ${on ? "on" : ""}" data-choose="${o.id}">
           <div class="opt-top">
@@ -1185,12 +1194,8 @@
             <input class="opt-name" data-opt-name="${o.id}" maxlength="40" placeholder="一条路" value="${escapeHtml(o.name)}" />
             <button class="supp-btn ${open ? "on" : ""}" type="button" data-supp="${o.id}">补充</button>
           </div>
-          ${on ? `<div class="why-wrap" data-stop="1">
-            <input class="line-in" data-opt-why="${o.id}" maxlength="80" placeholder="当时为什么选这条" value="${escapeHtml(o.why)}" />
-          </div>` : ""}
-          ${!open && summary && !on ? `<p class="hint-mini">${escapeHtml((o.note || o.pro || o.con).trim())}</p>` : ""}
+          ${!open && filled ? `<p class="hint-mini">${escapeHtml((o.pro || o.con).trim())}</p>` : ""}
           ${open ? `<div class="supp" data-stop="1">
-            <textarea class="area-in" data-opt-note="${o.id}" rows="2" placeholder="说明">${escapeHtml(o.note)}</textarea>
             <input class="line-in" data-opt-pro="${o.id}" maxlength="80" placeholder="好处" value="${escapeHtml(o.pro)}" />
             <input class="line-in" data-opt-con="${o.id}" maxlength="80" placeholder="代价" value="${escapeHtml(o.con)}" />
           </div>` : ""}
@@ -1236,7 +1241,7 @@
       const startOn = ui.pick === "start" ? "on" : "";
       const endOn = ui.pick === "end" ? "on" : "";
       return `
-        ${header("记下", `<button class="quiet back" type="button" data-act="back">‹</button>`, "")}
+        ${header("记下", `<button class="quiet back" type="button" data-act="back" title="返回">‹</button>`, "")}
         <div class="paper">
           <input class="title-in" id="title" maxlength="20" placeholder="给这条决策起个短名" value="${escapeHtml(draft.title)}" />
           <button class="fold" type="button" data-act="bg">${ui.bgOpen || draft.background ? "背景" : "背景（可不填）"}</button>
@@ -1244,6 +1249,8 @@
           <span class="lab">选项</span>
           ${draft.options.map(optionRow).join("")}
           <button class="add-opt" type="button" data-act="add-opt">再加一条</button>
+          <span class="lab">最终决策原因</span>
+          <textarea class="area-in" id="why" rows="3" maxlength="80" placeholder="${draft.chosenId ? "为什么最终选了这条" : "先在上面选一条路"}" ${draft.chosenId ? "" : "disabled"}>${escapeHtml(whyOfChosen())}</textarea>
           <div class="dates">
             <button class="date-pick ${startOn}" type="button" data-act="pick-start">
               <span class="lab">写下</span>
@@ -1256,7 +1263,7 @@
             </button>
           </div>
           ${miniCal()}
-          <span class="lab">看什么</span>
+          <span class="lab">未来如何验证决策是否正确</span>
           <input class="line-in" id="check" maxlength="120" placeholder="到那天，看哪件具体的事" value="${escapeHtml(draft.check)}" />
           <p class="err">${escapeHtml(ui.err)}</p>
           <div class="actions">
@@ -1269,21 +1276,9 @@
     function renderPaper() {
       const d = byId(ui.paperId);
       if (!d) return renderCal();
-      const locked = !!d.result;
-      if (locked) return renderRead(d);
-      const conclude = ui.concludeOpen ? `
-        <span class="lab">对了 / 错了 / 一半</span>
-        <div class="verdicts">
-          ${["right", "wrong", "half"].map((k) =>
-            `<button type="button" data-v="${k}" class="${ui.verdict === k ? "on" : ""}">${VERDICT[k]}</button>`
-          ).join("")}
-        </div>
-        <span class="lab">漏看了什么</span>
-        <input class="line-in" id="miss" maxlength="120" placeholder="${ui.verdict === "right" ? "可以不写" : "当时漏看了什么"}" value="${escapeHtml(ui.miss)}" />
-      ` : "";
-      const canConfirm = ui.concludeOpen && ui.verdict && (ui.verdict === "right" || ui.miss.trim());
+      if (d.result || !ui.editing) return renderRead(d);
       return `
-        ${header("决策", `<button class="quiet back" type="button" data-act="back">‹</button>`, `<button class="ghost" type="button" data-act="ask-del">删除</button>`)}
+        ${header("决策", `<button class="quiet back" type="button" data-act="back" title="返回">‹</button>`, `<button class="ghost" type="button" data-act="ask-del">删除</button>`)}
         <div class="paper">
           <input class="title-in" id="title" maxlength="20" value="${escapeHtml(draft.title)}" />
           <button class="fold" type="button" data-act="bg">${ui.bgOpen || draft.background ? "背景" : "背景（可不填）"}</button>
@@ -1291,8 +1286,8 @@
           <span class="lab">选项</span>
           ${draft.options.map(optionRow).join("")}
           <button class="add-opt" type="button" data-act="add-opt">再加一条</button>
-          <span class="lab">后来</span>
-          <input class="line-in" id="later" maxlength="120" placeholder="后来看到了什么" value="${escapeHtml(d.later || "")}" />
+          <span class="lab">最终决策原因</span>
+          <textarea class="area-in" id="why" rows="3" maxlength="80" placeholder="${draft.chosenId ? "为什么最终选了这条" : "先在上面选一条路"}" ${draft.chosenId ? "" : "disabled"}>${escapeHtml(whyOfChosen())}</textarea>
           <div class="dates">
             <button class="date-pick ${ui.pick === "start" ? "on" : ""}" type="button" data-act="pick-start">
               <span class="lab">写下</span>
@@ -1305,13 +1300,8 @@
             </button>
           </div>
           ${miniCal()}
-          <span class="lab">看什么</span>
+          <span class="lab">未来如何验证决策是否正确</span>
           <input class="line-in" id="check" maxlength="120" value="${escapeHtml(draft.check)}" />
-          ${conclude}
-          <p class="err">${escapeHtml(ui.err)}</p>
-          <div class="actions">
-            <button class="primary" type="button" data-act="${ui.concludeOpen ? "confirm-verdict" : "open-conclude"}" ${ui.concludeOpen && !canConfirm ? "disabled" : ""}>写下结论</button>
-          </div>
         </div>
         ${ui.confirmDel ? delDialog() : ""}
       `;
@@ -1322,24 +1312,45 @@
       const opts = d.options.map((o) => `
         <div class="ro-opt ${o.id === d.chosenId ? "on" : ""}">
           <strong>${escapeHtml(o.name)}</strong>
-          ${o.note ? `<p class="ro-body">${escapeHtml(o.note)}</p>` : ""}
           ${o.pro ? `<p class="ro-body">好处 · ${escapeHtml(o.pro)}</p>` : ""}
           ${o.con ? `<p class="ro-body">代价 · ${escapeHtml(o.con)}</p>` : ""}
-          ${o.id === d.chosenId && o.why ? `<p class="ro-body">${escapeHtml(o.why)}</p>` : ""}
         </div>
       `).join("");
+      const conclude = !d.result && ui.concludeOpen ? `
+        <span class="lab">对了 / 错了 / 一半</span>
+        <div class="verdicts">
+          ${["right", "wrong", "half"].map((k) =>
+            `<button type="button" data-v="${k}" class="${ui.verdict === k ? "on" : ""}">${VERDICT[k]}</button>`
+          ).join("")}
+        </div>
+        <span class="lab">漏看了什么</span>
+        <input class="line-in" id="miss" maxlength="120" placeholder="${ui.verdict === "right" ? "可以不写" : "当时漏看了什么"}" value="${escapeHtml(ui.miss)}" />
+      ` : "";
+      const canConfirm = ui.verdict && (ui.verdict === "right" || ui.miss.trim());
+      const right = d.result
+        ? `<button class="ghost" type="button" data-act="ask-del">删除</button>`
+        : `<button class="quiet" type="button" data-act="edit">编辑</button>
+          <button class="ghost" type="button" data-act="ask-del">删除</button>`;
       return `
-        ${header("决策", `<button class="quiet back" type="button" data-act="back">‹</button>`, `<button class="ghost" type="button" data-act="ask-del">删除</button>`)}
+        ${header("决策", `<button class="quiet back" type="button" data-act="back" title="返回">‹</button>`, right)}
         <div class="paper">
           <p class="ro-title">${escapeHtml(d.title)}</p>
           ${d.background ? `<p class="ro-body">${escapeHtml(d.background)}</p>` : ""}
           <span class="lab">选项</span>
           ${opts}
-          ${d.later ? `<span class="lab">后来</span><p class="ro-body">${escapeHtml(d.later)}</p>` : ""}
+          ${chosen && chosen.why ? `<span class="lab">最终决策原因</span><p class="ro-body">${escapeHtml(chosen.why)}</p>` : ""}
           <p class="ro-body">${fmtShort(d.start)} — ${fmtShort(d.end)}</p>
+          <span class="lab">未来如何验证决策是否正确</span>
           <p class="ro-body">${escapeHtml(d.check)}</p>
-          <p class="stamp ${d.result}">${VERDICT[d.result]}</p>
-          ${d.miss ? `<p class="ro-body">${escapeHtml(d.miss)}</p>` : ""}
+          ${d.result ? `
+            <p class="stamp ${d.result}">${VERDICT[d.result]}</p>
+            ${d.miss ? `<p class="ro-body">${escapeHtml(d.miss)}</p>` : ""}
+          ` : `
+            ${conclude}
+            <div class="actions">
+              <button class="primary" type="button" data-act="${ui.concludeOpen ? "confirm-verdict" : "open-conclude"}" ${ui.concludeOpen && !canConfirm ? "disabled" : ""}>${ui.concludeOpen ? "记下结论" : "写下结论"}</button>
+            </div>
+          `}
         </div>
         ${ui.confirmDel ? delDialog() : ""}
       `;
@@ -1370,6 +1381,7 @@
     function goCal() {
       ui.screen = "cal";
       ui.err = "";
+      ui.editing = false;
       ui.concludeOpen = false;
       ui.confirmDel = false;
       render();
@@ -1394,11 +1406,21 @@
       if (!d) return;
       ui.paperId = id;
       ui.screen = "paper";
+      ui.editing = false;
       ui.err = "";
       ui.concludeOpen = false;
       ui.verdict = "";
       ui.miss = "";
       ui.confirmDel = false;
+      render();
+    }
+
+    function startEdit() {
+      const d = byId(ui.paperId);
+      if (!d || d.result) return;
+      ui.editing = true;
+      ui.err = "";
+      ui.concludeOpen = false;
       ui.bgOpen = !!d.background;
       ui.supp = {};
       ui.pick = "end";
@@ -1461,12 +1483,12 @@
           e.stopPropagation();
           syncDraft();
           const id = t.dataset.supp;
-          ui.supp[id] = !ui.supp[id];
+          ui.supp[id] = !suppOpen(id);
           render();
           return;
         }
         if (t.dataset.choose) {
-          if (e.target.closest(".supp-btn, .supp, .why-wrap")) return;
+          if (e.target.closest(".supp-btn, .supp")) return;
           const id = t.dataset.choose;
           const fromName = e.target.closest(".opt-name");
           if (fromName && draft.chosenId === id) return;
@@ -1477,7 +1499,7 @@
             const name = $(`[data-opt-name="${id}"]`);
             if (name) name.focus();
           } else {
-            const why = $(`[data-opt-why="${id}"]`);
+            const why = $("#why");
             if (why) why.focus();
           }
           return;
@@ -1520,16 +1542,22 @@
           openCompose(today());
         } else if (act === "compose-day") {
           openCompose(ui.day || today());
+        } else if (act === "edit") {
+          startEdit();
         } else if (act === "back") {
           if (ui.screen === "paper") {
-            syncDraft();
-            const d = byId(ui.paperId);
-            if (d && !d.result) {
-              if (applyDraftTo(d)) save();
-            } else if (d) save();
-            ui.day = null;
-            ui.paperId = null;
-            goCal();
+            if (ui.editing) {
+              syncDraft();
+              const d = byId(ui.paperId);
+              if (d && !d.result && applyDraftTo(d)) save();
+              ui.editing = false;
+              ui.concludeOpen = false;
+              render();
+            } else {
+              ui.day = null;
+              ui.paperId = null;
+              goCal();
+            }
           } else if (ui.screen === "compose") {
             const start = draft.start;
             if (start && listForDay(start).length) {
@@ -1566,7 +1594,7 @@
         } else if (act === "save") {
           syncDraft();
           if (!draftReady()) {
-            ui.err = "还差主题、两条路、选中一句原因、回头看，和看什么。";
+            ui.err = "还差主题、两条路、选中一条路、决策原因、回头看，和怎么验证。";
             render();
             return;
           }
@@ -1589,9 +1617,6 @@
           ui.anchor = draft.start;
           goCal();
         } else if (act === "open-conclude") {
-          syncDraft();
-          const d = byId(ui.paperId);
-          if (d && applyDraftTo(d)) save();
           ui.concludeOpen = true;
           render();
         } else if (act === "confirm-verdict") {
@@ -1599,11 +1624,13 @@
           const d = byId(ui.paperId);
           if (!d || !ui.verdict) return;
           if (ui.verdict !== "right" && !ui.miss.trim()) return;
-          if (!applyDraftTo(d)) return;
           d.result = ui.verdict;
           d.miss = ui.miss.trim();
           save();
-          goCal();
+          ui.concludeOpen = false;
+          ui.verdict = "";
+          ui.miss = "";
+          render();
         } else if (act === "ask-del") {
           ui.confirmDel = true;
           render();
