@@ -692,6 +692,49 @@
       border-radius: 2px;
       letter-spacing: 0.1em;
     }
+
+    .ai-block {
+      margin-top: 32px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+    }
+    .ai-block .err { margin: 0 0 10px; }
+    .ai-wait {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .ai-waiting { color: var(--muted); font-size: 14px; letter-spacing: 0.06em; }
+    .ai-meta { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; }
+    .ai-seal {
+      flex-shrink: 0;
+      font-family: var(--serif);
+      font-size: 11px;
+      line-height: 1;
+      color: var(--paper);
+      background: var(--ink);
+      padding: 3px 6px 4px;
+      border-radius: 2px;
+      letter-spacing: 0.1em;
+    }
+    .ai-by { color: var(--faint); font-size: 11px; letter-spacing: 0.12em; }
+    .ai-h {
+      font-family: var(--serif);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      margin: 14px 0 2px;
+    }
+    .ai-p {
+      color: var(--ink);
+      font-size: 14px;
+      line-height: 1.8;
+      margin: 4px 0;
+      white-space: pre-wrap;
+    }
+    .ai-acts { display: flex; justify-content: flex-end; margin-top: 8px; }
     .stamp {
       font-family: var(--serif);
       font-size: 22px;
@@ -1601,6 +1644,7 @@
           <p class="ro-body">${fmtShort(d.start)} — ${fmtShort(d.end)}</p>
           <span class="lab">未来如何验证决策是否正确</span>
           <p class="ro-body">${escapeHtml(d.check)}</p>
+          ${aiBlock(d)}
           ${d.result ? `
             <p class="stamp ${d.result}">${VERDICT[d.result]}</p>
             ${d.miss ? `<p class="ro-body">${escapeHtml(d.miss)}</p>` : ""}
@@ -1615,6 +1659,206 @@
         </div>
         ${ui.confirmDel ? delDialog() : ""}
       `;
+    }
+
+    // ── AI 点评（问春风）──────────────────────────
+    let aiBusyId = null;   // 正在建立会话的决策 id（非持久）
+    let aiPolling = false; // 轮询器是否在跑
+    let qcaEnvId = "";     // 页内缓存的环境 id
+
+    function aiBlock(d) {
+      const cfg = loadQca();
+      if (!cfg.pat || !cfg.currentAgentId) {
+        return `<div class="ai-block">
+          <button class="add-opt" type="button" data-act="to-ai-settings">连上 Qoder，问一次春风</button>
+        </div>`;
+      }
+      const ai = d.ai || {};
+      if (ai.pending || aiBusyId === d.id) {
+        return `<div class="ai-block ai-wait">
+          <span class="ai-waiting">春风正在看…</span>
+          ${ai.pending ? `<button class="quiet" type="button" data-act="cancel-ai">取消</button>` : ""}
+        </div>`;
+      }
+      if (ai.error) {
+        return `<div class="ai-block">
+          <p class="err">${escapeHtml(ai.error)}</p>
+          <button class="add-opt" type="button" data-act="ask-ai">再问一次</button>
+        </div>`;
+      }
+      if (ai.text) {
+        return `<div class="ai-block">
+          <p class="ai-meta"><span class="ai-seal">评</span><span class="ai-by">${escapeHtml(ai.agentName || "AI")} · ${escapeHtml(fmtShort(iso(new Date(ai.at))))}</span></p>
+          ${aiSections(ai.text)}
+          <div class="ai-acts"><button class="quiet" type="button" data-act="ask-ai">再问一次</button></div>
+        </div>`;
+      }
+      return `<div class="ai-block">
+        <button class="add-opt" type="button" data-act="ask-ai">问春风</button>
+      </div>`;
+    }
+
+    function aiSections(text) {
+      const out = [];
+      let buf = [];
+      const flush = () => {
+        if (buf.length) out.push(`<p class="ai-p">${escapeHtml(buf.join("\n"))}</p>`);
+        buf = [];
+      };
+      for (const raw of String(text || "").split("\n")) {
+        const line = raw.trim();
+        const m = line.match(/^【([^】]{1,6})】$/);
+        if (m) {
+          flush();
+          out.push(`<p class="ai-h">${escapeHtml(m[1])}</p>`);
+        } else if (!line) {
+          flush();
+        } else {
+          buf.push(line);
+        }
+      }
+      flush();
+      return out.join("") || `<p class="ai-p">${escapeHtml(String(text || "").trim())}</p>`;
+    }
+
+    function aiPrompt(d) {
+      const chosen = d.options.find((o) => o.id === d.chosenId);
+      const day = (s) => {
+        const t = parseIso(s);
+        return `${t.getFullYear()}年${t.getMonth() + 1}月${t.getDate()}日`;
+      };
+      const days = Math.round((parseIso(d.end) - parseIso(today())) / 86400000);
+      const left = days > 0 ? `还剩 ${days} 天` : days === 0 ? "今天就是到期日" : `已超期 ${-days} 天`;
+      const opts = d.options.map((o, i) => {
+        let s = `${i + 1}. ${o.name}${o.id === d.chosenId ? "（已选）" : ""}`;
+        if (o.pro) s += `｜好处：${o.pro}`;
+        if (o.con) s += `｜代价：${o.con}`;
+        return s;
+      }).join("\n");
+      let p = "你在一个「判断日历」产品的「问春风」功能里：用户记下了一条会被打分的重要决策，请你作为一位冷静的旁观者点评它。\n\n"
+        + "输出要求——只输出纯文本，不要 markdown 和列表符号，总字数不超过 600 字。严格用下面四个段头组织，每个段头单独成行：\n"
+        + "【点评】评论证是否成立：已选的理由是否坚实，好处与代价的掂量是否可信。\n"
+        + "【盲点】指出用户自己没看见的最大盲点或风险，只挑一条，说透。\n"
+        + "【到期】给到期验证那天最该看的具体信号：可观察、可判定。\n"
+        + "【结论】一句话表明立场：这条路值不值得押注，以及最要紧的下一步。\n\n";
+      if (d.result) p += "另外，这条决策已有事后结论，【点评】请转为复盘：当初的判断依据经得起检验吗，对/错在哪里。\n\n";
+      p += "以下是这条决策的全部内容：\n\n"
+        + `【主题】${d.title}\n`
+        + `【类别】${catOf(d) === "work" ? "工作" : "生活"}\n`;
+      if (d.background) p += `【背景】${d.background}\n`;
+      p += `【选项】\n${opts}\n`
+        + `【选择原因】${chosen ? chosen.why : ""}\n`
+        + `【时间】${day(d.start)} 到 ${day(d.end)}；今天 ${day(today())}，${left}\n`
+        + `【验证标准】${d.check}\n`;
+      if (d.result) {
+        p += `\n【事后】\n结论：${VERDICT[d.result] || d.result}\n`;
+        if (d.miss) p += `总结：${d.miss}\n`;
+        if (Array.isArray(d.notes) && d.notes.length) {
+          p += "留言：\n" + d.notes.map((n) => `· ${day(iso(new Date(n.at)))}：${n.text}`).join("\n") + "\n";
+        }
+      }
+      return p;
+    }
+
+    async function ensureEnv() {
+      if (qcaEnvId) return qcaEnvId;
+      const list = await qcaJson("environments");
+      const first = ((list && list.data) || [])[0];
+      if (first && first.id) {
+        qcaEnvId = first.id;
+      } else {
+        const created = await qcaJson("environments", { method: "POST", body: { name: "ToughYourself" } });
+        qcaEnvId = (created && created.id) || "";
+      }
+      return qcaEnvId;
+    }
+
+    async function startAsk() {
+      const d = byId(ui.paperId);
+      if (!d) {
+        aiBusyId = null;
+        render();
+        return;
+      }
+      try {
+        const envId = await ensureEnv();
+        if (!envId) throw new Error("环境没准备好，请稍后再试。");
+        const session = await qcaJson("sessions", {
+          method: "POST",
+          body: {
+            agent: { id: loadQca().currentAgentId, type: "agent" },
+            environment_id: envId,
+            title: "点评 · " + d.title,
+          },
+        });
+        await qcaJson("sessions/" + encodeURIComponent(session.id) + "/events", {
+          method: "POST",
+          body: { events: [{ type: "user.message", content: [{ type: "text", text: aiPrompt(d) }] }] },
+        });
+        d.ai = {
+          pending: {
+            sessionId: session.id,
+            startedAt: Date.now(),
+            agentName: (session.agent && session.agent.name) || "AI",
+          },
+        };
+        aiBusyId = null;
+        save();
+        render();
+        pollAi();
+      } catch (err) {
+        d.ai = { error: (err && err.message) || "没问成，再试一次。" };
+        aiBusyId = null;
+        save();
+        render();
+      }
+    }
+
+    function pollAi() {
+      if (aiPolling) return;
+      aiPolling = true;
+      const tick = async () => {
+        const d = data.decisions.find((x) => x.ai && x.ai.pending);
+        if (!d) {
+          aiPolling = false;
+          return;
+        }
+        const pend = d.ai.pending;
+        const done = (ai) => {
+          d.ai = ai;
+          save();
+          if (ui.screen === "paper" && ui.paperId === d.id) render();
+          aiPolling = false;
+        };
+        if (Date.now() - pend.startedAt > 120000) {
+          done({ error: "AI 这次没回上来，再问一次。" });
+          return;
+        }
+        try {
+          const body = await qcaJson("sessions/" + encodeURIComponent(pend.sessionId)
+            + "/events?order=desc&limit=20&types=agent.message,session.error,session.status_idle");
+          const evts = (body && body.data) || [];
+          const txt = (e) => ((e && e.content) || []).map((c) => (c && c.type === "text" ? c.text : "")).join("").trim();
+          const errEvt = evts.find((x) => x.type === "session.error");
+          const idleIdx = evts.findIndex((x) => x.type === "session.status_idle");
+          const msgIdx = evts.findIndex((x) => x.type === "agent.message");
+          if (errEvt) {
+            done({ error: txt(errEvt) || "AI 出错了，再问一次。" });
+            return;
+          }
+          if (idleIdx >= 0 && msgIdx >= 0 && idleIdx < msgIdx) {
+            const text = txt(evts[msgIdx]);
+            if (text) {
+              done({ text, agentName: pend.agentName || "AI", at: Date.now() });
+              return;
+            }
+          }
+        } catch (_) {
+          /* 网络抖动：下轮再试 */
+        }
+        setTimeout(tick, 2000);
+      };
+      setTimeout(tick, 2000);
     }
 
     function delDialog() {
@@ -1884,6 +2128,8 @@
       else if (ui.screen === "agent-form") shell.innerHTML = renderAgentForm();
       else shell.innerHTML = renderPaper();
       bind();
+      // AI 点评：有进行中的会话就续上轮询（幂等，刷新/换页后恢复）
+      if (data.decisions.some((x) => x.ai && x.ai.pending)) pollAi();
     }
 
     function goCal() {
@@ -2127,8 +2373,9 @@
             return;
           }
           const named = draft.options.filter((o) => o.name.trim());
+          const newId = uid();
           data.decisions.push({
-            id: uid(),
+            id: newId,
             createdAt: Date.now(),
             title: draft.title.trim(),
             background: draft.background.trim(),
@@ -2143,7 +2390,34 @@
           });
           save();
           ui.anchor = draft.start;
-          goCal();
+          ui.paperId = newId;
+          ui.screen = "paper";
+          ui.err = "";
+          ui.editing = false;
+          ui.concludeOpen = false;
+          ui.confirmDel = false;
+          render();
+        } else if (act === "ask-ai") {
+          const cfg = loadQca();
+          if (!cfg.pat || !cfg.currentAgentId) {
+            openSettings();
+            return;
+          }
+          if (aiBusyId) return;
+          aiBusyId = ui.paperId;
+          render();
+          startAsk();
+        } else if (act === "cancel-ai") {
+          const d = byId(ui.paperId);
+          if (d && d.ai && d.ai.pending) {
+            const sid = d.ai.pending.sessionId;
+            d.ai = {};
+            save();
+            render();
+            qcaJson("sessions/" + encodeURIComponent(sid) + "/cancel", { method: "POST" }).catch(() => {});
+          }
+        } else if (act === "to-ai-settings") {
+          openSettings();
         } else if (act === "open-conclude") {
           ui.concludeOpen = true;
           render();
