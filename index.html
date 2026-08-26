@@ -788,30 +788,83 @@
     .sync.busy { color: var(--muted); }
     .sync.err { color: var(--red); }
 
-    .set-block { margin-bottom: 40px; }
+    .set-tabs { display: flex; justify-content: center; gap: 8px; margin: 0 0 20px; }
+
+    .ai-title {
+      font-family: var(--serif);
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      margin: 4px 0 8px;
+    }
+    .acc-mail { color: var(--ink); font-size: 15px; margin: 4px 0 20px; }
     .set-lead {
       color: var(--muted);
       font-size: 14px;
       line-height: 1.7;
       margin: 4px 0 16px;
     }
-    .pat-saved {
-      font-variant-numeric: tabular-nums;
-      letter-spacing: 0.04em;
-      margin-bottom: 12px;
-    }
-    .agent-line {
+
+    .agent-row {
       display: flex;
       align-items: center;
-      gap: 10px;
-      margin-bottom: 8px;
+      border-bottom: 1px solid var(--line);
+      border-radius: 6px;
     }
-    .agent-line .opt {
+    .agent-row.on { background: rgba(28, 24, 20, 0.04); }
+    .agent-pick {
       flex: 1;
-      margin-bottom: 0;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 10px 12px 12px;
       text-align: left;
     }
-    .agent-line .opt-top { width: 100%; }
+    .agent-row.on .radio { border-color: var(--ink); }
+    .agent-row.on .radio i { display: block; }
+    .a-main { flex: 1; min-width: 0; }
+    .a-name {
+      display: block;
+      color: var(--muted);
+      font-size: 15px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .agent-row.on .a-name { color: var(--ink); }
+    .a-model {
+      display: block;
+      color: var(--faint);
+      font-size: 12px;
+      margin-top: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .a-edit { flex-shrink: 0; padding: 10px 12px 10px 8px; }
+    .a-new { display: block; width: 100%; text-align: left; padding: 12px 10px 14px 12px; }
+
+    .key-foot {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-top: 28px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+    }
+    .key-num {
+      color: var(--faint);
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      font-variant-numeric: tabular-nums;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .key-acts { display: flex; gap: 2px; flex-shrink: 0; }
+    .key-acts button.quiet { font-size: 12px; padding: 4px 8px; }
     select.line-in {
       appearance: none;
       border-radius: 0;
@@ -1063,6 +1116,7 @@
       pick: "end",
       bgOpen: false,
       filter: "all",
+      setTab: "ai",
       supp: {},
       concludeOpen: false,
       verdict: "",
@@ -1692,6 +1746,7 @@
 
     function openSettings() {
       ui.screen = "settings";
+      ui.setTab = "ai";
       ui.qcaErr = "";
       ui.qcaReplacing = false;
       ui.qcaConfirmDel = false;
@@ -1700,10 +1755,10 @@
       if (loadQca().pat) refreshQca();
     }
 
-    function renderAccountBlock() {
+    function renderAccTab() {
       if (authMode === "cloud") {
-        return `<p class="set-lead">${escapeHtml(userEmail)}</p>
-          <button class="ghost" type="button" data-act="logout">退出</button>`;
+        return `<p class="acc-mail">${escapeHtml(userEmail)}</p>
+          <button class="ghost" type="button" data-act="logout">退出登录</button>`;
       }
       const loginBtn = CLOUD_READY
         ? `<button class="quiet" type="button" data-act="to-login">去登录</button>`
@@ -1711,72 +1766,69 @@
       return `<p class="set-lead">仅本机使用。决策和 AI 钥匙都只在这台浏览器里。</p>${loginBtn}`;
     }
 
-    function renderPatBlock() {
+    function renderAiTab() {
       const cfg = loadQca();
       if (!cfg.pat || ui.qcaReplacing) {
-        const cancel = cfg.pat
-          ? `<button class="quiet" type="button" data-act="cancel-replace-pat">取消</button>`
-          : "";
         return `
-          <label class="lab" for="qca-pat">Qoder 个人访问令牌</label>
+          <p class="ai-title">${cfg.pat ? "更换钥匙" : "连上 Qoder"}</p>
+          <p class="set-lead">${cfg.pat ? "填入新的个人访问令牌，替换现在这把。" : "填入个人访问令牌，选用和管理你的云 Agent。"}</p>
+          <label class="lab" for="qca-pat">个人访问令牌</label>
           <input class="line-in" id="qca-pat" type="password" autocomplete="off" placeholder="pt-…" ${ui.qcaBusy ? "disabled" : ""} />
-          <p class="set-lead">在 <a href="${QCA_PAT_URL}" target="_blank" rel="noopener">${QCA_PAT_URL}</a> 创建。钥匙只存在这台浏览器，不会同步到云端。</p>
+          <p class="set-lead">在 <a href="${QCA_PAT_URL}" target="_blank" rel="noopener">Qoder 控制台</a> 创建，只存在这台浏览器。</p>
           <div class="actions">
-            <button class="primary" type="button" data-act="save-pat" ${ui.qcaBusy ? "disabled" : ""}>保存</button>
-            ${cancel}
-          </div>`;
+            <button class="primary" type="button" data-act="save-pat" ${ui.qcaBusy ? "disabled" : ""}>${cfg.pat ? "保存" : "连上"}</button>
+            ${cfg.pat ? `<button class="quiet" type="button" data-act="cancel-replace-pat">取消</button>` : ""}
+          </div>
+          <p class="err">${escapeHtml(ui.qcaErr)}</p>`;
       }
-      return `
-        <p class="pat-saved">${escapeHtml(maskPat(cfg.pat))}</p>
-        <div class="actions" style="margin-top:8px">
-          <button class="quiet" type="button" data-act="replace-pat" ${ui.qcaBusy ? "disabled" : ""}>更换</button>
-          <button class="ghost" type="button" data-act="clear-pat" ${ui.qcaBusy ? "disabled" : ""}>清除</button>
-        </div>`;
-    }
-
-    function renderAgentList() {
-      const cfg = loadQca();
-      if (!cfg.pat || ui.qcaReplacing) return "";
+      let list = "";
       if (ui.qcaBusy) {
-        return `<p class="set-lead">正在向 Qoder 拉取…</p>`;
-      }
-      if (!ui.qcaReady) return "";
-      const rows = ui.qcaAgents.map((a) => {
-        const on = a.id === cfg.currentAgentId;
-        return `<div class="agent-line">
-          <button class="opt${on ? " on" : ""}" type="button" data-act="use-agent" data-id="${escapeHtml(a.id)}" ${ui.qcaBusy ? "disabled" : ""}>
-            <span class="opt-top">
+        list = `<span class="lab">当前 Agent</span>
+          <p class="set-lead">正在向 Qoder 拉取…</p>`;
+      } else if (ui.qcaReady) {
+        const rows = ui.qcaAgents.map((a) => {
+          const on = a.id === cfg.currentAgentId;
+          const model = modelIdOf(a);
+          return `<div class="agent-row${on ? " on" : ""}">
+            <button class="agent-pick" type="button" data-act="use-agent" data-id="${escapeHtml(a.id)}" ${ui.qcaBusy ? "disabled" : ""}>
               <span class="radio"><i></i></span>
-              <span class="opt-name">${escapeHtml(a.name || a.id)}</span>
-            </span>
-          </button>
-          <button class="quiet" type="button" data-act="edit-agent" data-id="${escapeHtml(a.id)}" ${ui.qcaBusy ? "disabled" : ""}>改</button>
-        </div>`;
-      }).join("");
-      const empty = ui.qcaAgents.length ? "" : `<p class="set-lead">还没有 Agent。新建一个才会出现在这里。改的是你 Qoder 账号里的真 Agent。</p>`;
+              <span class="a-main">
+                <span class="a-name">${escapeHtml(a.name || a.id)}</span>
+                ${model ? `<span class="a-model">${escapeHtml(model)}</span>` : ""}
+              </span>
+            </button>
+            <button class="quiet a-edit" type="button" data-act="edit-agent" data-id="${escapeHtml(a.id)}" ${ui.qcaBusy ? "disabled" : ""}>改</button>
+          </div>`;
+        }).join("");
+        const empty = ui.qcaAgents.length ? "" : `<p class="set-lead">还没有 Agent。</p>`;
+        list = `
+          <span class="lab">当前 Agent</span>
+          ${empty}
+          ${rows}
+          <button class="add-opt a-new" type="button" data-act="new-agent" ${ui.qcaBusy ? "disabled" : ""}>＋ 新建</button>`;
+      }
       return `
-        <span class="lab">当前使用</span>
-        ${empty}
-        ${rows}
-        <div class="actions">
-          <button class="primary" type="button" data-act="new-agent" ${ui.qcaBusy ? "disabled" : ""}>新建</button>
+        ${list}
+        <p class="err">${escapeHtml(ui.qcaErr)}</p>
+        <div class="key-foot">
+          <span class="key-num">${escapeHtml(maskPat(cfg.pat))}</span>
+          <span class="key-acts">
+            <button class="quiet" type="button" data-act="replace-pat" ${ui.qcaBusy ? "disabled" : ""}>更换</button>
+            <button class="quiet" type="button" data-act="clear-pat" ${ui.qcaBusy ? "disabled" : ""}>清除</button>
+          </span>
         </div>`;
     }
 
     function renderSettings() {
+      const tab = ui.setTab === "acc" ? "acc" : "ai";
       return `
         ${header("设置", `<button class="quiet back" type="button" data-act="back" title="返回">‹</button>`, "")}
+        <div class="set-tabs">
+          <button class="cat-pill${tab === "ai" ? " on" : ""}" type="button" data-act="set-tab-ai">AI</button>
+          <button class="cat-pill${tab === "acc" ? " on" : ""}" type="button" data-act="set-tab-acc">账号</button>
+        </div>
         <div class="paper">
-          <div class="set-block">
-            <span class="lab">账号</span>
-            ${renderAccountBlock()}
-          </div>
-          <div class="set-block">
-            <span class="lab">AI</span>
-            ${renderPatBlock()}
-            ${renderAgentList()}
-            <p class="err">${escapeHtml(ui.qcaErr)}</p>
-          </div>
+          ${tab === "ai" ? renderAiTab() : renderAccTab()}
         </div>`;
     }
 
@@ -2015,6 +2067,7 @@
           if (ui.screen === "agent-form") {
             ui.qcaConfirmDel = false;
             ui.qcaErr = "";
+            ui.setTab = "ai";
             ui.screen = "settings";
             render();
           } else if (ui.screen === "settings") {
@@ -2143,6 +2196,9 @@
           renderLogin();
         } else if (act === "settings") {
           openSettings();
+        } else if (act === "set-tab-ai" || act === "set-tab-acc") {
+          ui.setTab = act.slice(8);
+          render();
         } else if (act === "save-pat") {
           const box = $("#qca-pat");
           const pat = box ? box.value.trim() : "";
@@ -2237,6 +2293,7 @@
           render();
           const after = () => {
             ui.qcaBusy = false;
+            ui.setTab = "ai";
             ui.screen = "settings";
             refreshQca();
           };
@@ -2288,6 +2345,7 @@
             }
             agentForm = { id: null, name: "", system: "", model: "" };
             ui.qcaBusy = false;
+            ui.setTab = "ai";
             ui.screen = "settings";
             refreshQca();
           }).catch((err) => {
