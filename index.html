@@ -174,7 +174,6 @@
     .week-grid .cell { min-height: 88px; }
     .week-grid .cell.has { min-height: 176px; }
 
-    .cell.has { background: var(--paper); }
     .cell.out { opacity: 0.55; }
     .cell.out .num { color: var(--faint); }
     .cell.today .num {
@@ -312,9 +311,6 @@
       cursor: pointer;
     }
     .week-row:hover { background: #ece6da; }
-    .week-row.has {
-      background: var(--paper);
-    }
     .week-row.today .week-date-num {
       font-family: var(--serif);
       font-weight: 600;
@@ -1647,10 +1643,15 @@
     }
 
     function saveQca(next) {
-      localStorage.setItem(QCA_KEY, JSON.stringify({
+      const clean = {
         pat: next.pat || "",
         currentAgentId: next.currentAgentId || "",
-      }));
+      };
+      localStorage.setItem(QCA_KEY, JSON.stringify(clean));
+      if (authMode === "cloud" && userId) {
+        data.qca = clean;
+        save();
+      }
     }
 
     function maskPat(pat) {
@@ -1774,7 +1775,7 @@
           <p class="set-lead">${cfg.pat ? "填入新的个人访问令牌，替换现在这把。" : "填入个人访问令牌，选用和管理你的云 Agent。"}</p>
           <label class="lab" for="qca-pat">个人访问令牌</label>
           <input class="line-in" id="qca-pat" type="password" autocomplete="off" placeholder="pt-…" ${ui.qcaBusy ? "disabled" : ""} />
-          <p class="set-lead">在 <a href="${QCA_PAT_URL}" target="_blank" rel="noopener">Qoder 控制台</a> 创建，只存在这台浏览器。</p>
+          <p class="set-lead">在 <a href="${QCA_PAT_URL}" target="_blank" rel="noopener">Qoder 控制台</a> 创建，${authMode === "cloud" ? "会随账号保存到云端，换设备不用重填。" : "只存在这台浏览器。"}</p>
           <div class="actions">
             <button class="primary" type="button" data-act="save-pat" ${ui.qcaBusy ? "disabled" : ""}>${cfg.pat ? "保存" : "连上"}</button>
             ${cfg.pat ? `<button class="quiet" type="button" data-act="cancel-replace-pat">取消</button>` : ""}
@@ -2459,6 +2460,20 @@
         const local = loadKey(KEY);
         if (local.decisions.length) {
           data = local;
+          localStorage.setItem(userCloudKey, JSON.stringify(data));
+          cloudSave();
+        }
+      }
+      // AI 钥匙：云端有则恢复到本机，本机有而云端没有则首次入库
+      if (data.qca && typeof data.qca === "object") {
+        localStorage.setItem(QCA_KEY, JSON.stringify({
+          pat: typeof data.qca.pat === "string" ? data.qca.pat : "",
+          currentAgentId: typeof data.qca.currentAgentId === "string" ? data.qca.currentAgentId : "",
+        }));
+      } else {
+        const qca = loadQca();
+        if (qca.pat || qca.currentAgentId) {
+          data.qca = qca;
           localStorage.setItem(userCloudKey, JSON.stringify(data));
           cloudSave();
         }

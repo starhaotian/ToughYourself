@@ -64,7 +64,7 @@ ToughYourself 想把“判断质量”和“最终运气”分开。做决定时
 
 ## 部署上线（Vercel + Supabase + Google 登录，全程免费）
 
-整体结构：`index.html` 托管在 Vercel；Google 登录与决策数据存放在你自己的 Supabase 项目；Qoder Cloud Agents 经 `/api/qca` 同源代理，PAT 只留在用户浏览器里。
+整体结构：`index.html` 托管在 Vercel；Google 登录与决策数据存放在你自己的 Supabase 项目；Qoder Cloud Agents 经 `/api/qca` 同源代理，PAT 登录后随账号存入 Supabase，仅本机模式只留在浏览器里。
 
 ### 第 1 步：创建 Supabase 项目
 
@@ -114,12 +114,12 @@ const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_...";
 
 - 直接双击 `index.html`：可完整使用「仅本机」模式（不含 AI 设置）
 - 本地调试 Google 登录：`python3 -m http.server 8080`，打开 `http://localhost:8080`
-- 本地调试 AI 设置：在本目录运行 `npx vercel dev`，打开它给出的地址。Qoder 请求走 `/api/qca` 代理；PAT 只存在本机 `localStorage`（`judgment.qca.v1`），不会写入 Supabase
+- 本地调试 AI 设置：在本目录运行 `npx vercel dev`，打开它给出的地址。Qoder 请求走 `/api/qca` 代理；PAT 存在本机 `localStorage`（`judgment.qca.v1`），Google 登录后随决策文档一起写入 Supabase
 
 ## 数据说明
 
 - 仅本机模式：数据存浏览器 localStorage，清浏览器数据会丢失
 - 决策类别（工作 / 生活）存在每条决策的 `category` 字段；升级前创建的旧记录默认归为「工作」，可编辑修改
-- AI 钥匙与当前 Agent：只存在本机 `judgment.qca.v1`，与是否 Google 登录无关，也不会同步
+- AI 钥匙与当前 Agent：存本机 `judgment.qca.v1`；Google 登录后随决策文档一起存入 Supabase（`data.qca`），换设备登录自动恢复，本机模式不上云
 - 登录模式：数据存你的 Supabase 项目，每个账号一行，行级安全保证互相隔离；本机会留一份缓存，断网时仍可查看；首次登录时会把本机已有的记录自动带上云端
 - Supabase 免费项目若连续 7 天无人访问会自动休眠，进控制台点一下即可恢复
