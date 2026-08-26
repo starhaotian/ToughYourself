@@ -632,10 +632,33 @@
     }
     .ro-body { color: var(--muted); font-size: 15px; margin: 6px 0; }
     .ro-opt {
-      padding: 10px 0;
+      padding: 10px 0 10px 12px;
       border-top: 1px solid var(--line);
+      border-left: 2px solid transparent;
     }
-    .ro-opt.on { color: var(--ink); }
+    .ro-opt.on {
+      color: var(--ink);
+      border-left-color: var(--ink);
+      background: rgba(28, 24, 20, 0.05);
+      border-radius: 0 4px 4px 0;
+    }
+    .ro-opt strong {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .ro-name { flex: 1; min-width: 0; }
+    .pick-seal {
+      flex-shrink: 0;
+      font-family: var(--serif);
+      font-size: 11px;
+      line-height: 1;
+      color: var(--paper);
+      background: var(--ink);
+      padding: 3px 6px 4px;
+      border-radius: 2px;
+      letter-spacing: 0.1em;
+    }
     .stamp {
       font-family: var(--serif);
       font-size: 22px;
@@ -1419,7 +1442,7 @@
       const chosen = d.options.find((o) => o.id === d.chosenId);
       const opts = d.options.map((o, i) => `
         <div class="ro-opt ${o.id === d.chosenId ? "on" : ""}">
-          <strong><span class="opt-num">${i + 1}</span>${escapeHtml(o.name)}</strong>
+          <strong><span class="opt-num">${i + 1}</span><span class="ro-name">${escapeHtml(o.name)}</span>${o.id === d.chosenId ? '<span class="pick-seal">选</span>' : ""}</strong>
           ${o.pro ? `<p class="ro-body">好处 · ${escapeHtml(o.pro)}</p>` : ""}
           ${o.con ? `<p class="ro-body">代价 · ${escapeHtml(o.con)}</p>` : ""}
         </div>
