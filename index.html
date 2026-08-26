@@ -15,6 +15,8 @@
       --line: #ddd4c6;
       --gray: #8a8278;
       --gold: #c4a04a;
+      --work: #4e6e8e;
+      --life: #a9846a;
       --red: #c45c4a;
       --green: #3f7a55;
       --serif: "Songti SC", "STSong", "Noto Serif CJK SC", Georgia, serif;
@@ -217,9 +219,11 @@
       width: 100%;
       text-align: left;
       min-width: 0;
-      padding: 1px 0;
+      padding: 2px 5px 2px 8px;
     }
     .cell-item:hover .cell-t { color: var(--green); }
+    .cell-item.cat-work { background: rgba(78, 110, 142, 0.10); box-shadow: inset 2.5px 0 0 var(--work); border-radius: 4px; }
+    .cell-item.cat-life { background: rgba(169, 132, 106, 0.10); box-shadow: inset 2.5px 0 0 var(--life); border-radius: 4px; }
 
     .cell-t {
       flex: 1;
@@ -417,8 +421,10 @@
       display: flex;
       align-items: center;
       gap: 14px;
-      padding: 18px 4px;
+      padding: 18px 4px 18px 12px;
     }
+    .day-row.cat-work { background: rgba(78, 110, 142, 0.07); box-shadow: inset 3px 0 0 var(--work); border-radius: 4px; }
+    .day-row.cat-life { background: rgba(169, 132, 106, 0.07); box-shadow: inset 3px 0 0 var(--life); border-radius: 4px; }
     .day-row:hover .theme { color: var(--green); }
     .day-row .theme {
       font-family: var(--serif);
@@ -450,6 +456,24 @@
       color: var(--muted);
       margin: 28px 0 10px;
     }
+
+    .cat-row { display: flex; gap: 8px; margin: 12px 0 4px; }
+    .cat-pill {
+      font-family: var(--serif);
+      font-size: 13px;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 5px 16px 6px;
+    }
+    .cat-pill:hover { color: var(--ink); border-color: var(--muted); }
+    .cat-pill.on { color: var(--paper); background: var(--ink); border-color: var(--ink); }
+    .cat-pill.work.on { background: var(--work); border-color: var(--work); }
+    .cat-pill.life.on { background: var(--life); border-color: var(--life); }
+
+    .cat-filter { display: flex; justify-content: center; gap: 8px; margin: 0 0 16px; }
+    .cat-filter .cat-pill { padding: 3px 14px 4px; font-size: 12px; }
 
     .line-in, .area-in {
       width: 100%;
@@ -623,6 +647,19 @@
       margin-top: 36px;
     }
 
+    .ro-title-row { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+    .ro-title-row .ro-title { margin-bottom: 0; }
+    .cat-badge {
+      flex-shrink: 0;
+      font-family: var(--serif);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      border: 1px solid;
+      border-radius: 999px;
+      padding: 3px 10px 4px;
+    }
+    .cat-badge.work { color: var(--work); border-color: var(--work); }
+    .cat-badge.life { color: var(--life); border-color: var(--life); }
     .ro-title {
       font-family: var(--serif);
       font-size: 28px;
@@ -1005,6 +1042,7 @@
       return {
         title: "",
         background: "",
+        category: "work",
         options: emptyOptions(),
         chosenId: null,
         start: today(),
@@ -1024,6 +1062,7 @@
       editing: false,
       pick: "end",
       bgOpen: false,
+      filter: "all",
       supp: {},
       concludeOpen: false,
       verdict: "",
@@ -1043,6 +1082,14 @@
 
     function byId(id) {
       return data.decisions.find((d) => d.id === id) || null;
+    }
+
+    function catOf(d) {
+      return d.category === "life" ? "life" : "work";
+    }
+
+    function catPass(d) {
+      return ui.filter === "all" || catOf(d) === ui.filter;
     }
 
     function markKind(dec, role, date) {
@@ -1090,12 +1137,12 @@
     }
 
     function monthHas(s) {
-      return data.decisions.some((d) => inMonth(d.start, s) || inMonth(d.end, s));
+      return data.decisions.some((d) => (inMonth(d.start, s) || inMonth(d.end, s)) && catPass(d));
     }
 
     function listForDay(date) {
       return data.decisions
-        .filter((d) => d.start === date || d.end === date)
+        .filter((d) => (d.start === date || d.end === date) && catPass(d))
         .sort((a, b) => a.createdAt - b.createdAt);
     }
 
@@ -1204,7 +1251,7 @@
           : "";
         const items = top.map((dec) => {
           const k = dayMark(dec, date);
-          return `<button type="button" class="cell-item" data-open="${dec.id}">
+          return `<button type="button" class="cell-item cat-${catOf(dec)}" data-open="${dec.id}">
             <span class="mk ${k}">${glyph(k)}</span>
             <span class="cell-t">${escapeHtml(dec.title)}</span>
           </button>`;
@@ -1234,7 +1281,7 @@
           : "";
         const items = top.map((dec) => {
           const k = dayMark(dec, date);
-          return `<button type="button" class="cell-item" data-open="${dec.id}">
+          return `<button type="button" class="cell-item cat-${catOf(dec)}" data-open="${dec.id}">
             <span class="mk ${k}">${glyph(k)}</span>
             <span class="cell-t">${escapeHtml(dec.title)}</span>
           </button>`;
@@ -1272,6 +1319,11 @@
       return `
         ${brand}
         ${header(fmtTitle(ui.anchor, mode), left, right)}
+        <div class="cat-filter">
+          <button type="button" class="cat-pill${ui.filter === "all" ? " on" : ""}" data-act="filter-all">全部</button>
+          <button type="button" class="cat-pill work${ui.filter === "work" ? " on" : ""}" data-act="filter-work">工作</button>
+          <button type="button" class="cat-pill life${ui.filter === "life" ? " on" : ""}" data-act="filter-life">生活</button>
+        </div>
         ${mode === "week" ? "" : weekdayRow()}
         ${mode === "week" ? weekList(days) : `<div class="grid month-grid">${calCells(days, mode)}</div>`}
         ${empty ? `<p class="empty-line">把一条会被打分的选择记下</p>` : ""}
@@ -1289,7 +1341,7 @@
         if (d.end === date) kinds.push(markKind(d, "end", date));
         const mk = kinds.map((k) => `<span class="mk ${k}">${glyph(k)}</span>`).join("");
         return `<li>
-          <button type="button" class="day-row" data-open="${d.id}">
+          <button type="button" class="day-row cat-${catOf(d)}" data-open="${d.id}">
             <span class="mks">${mk}</span>
             <span class="theme">${escapeHtml(d.title)}</span>
           </button>
@@ -1375,6 +1427,10 @@
         ${header("记下", `<button class="quiet back" type="button" data-act="back" title="返回">‹</button>`, "")}
         <div class="paper">
           <input class="title-in" id="title" maxlength="20" placeholder="给这条决策起个短名" value="${escapeHtml(draft.title)}" />
+          <div class="cat-row">
+            <button type="button" class="cat-pill work${draft.category === "work" ? " on" : ""}" data-cat="work">工作</button>
+            <button type="button" class="cat-pill life${draft.category === "life" ? " on" : ""}" data-cat="life">生活</button>
+          </div>
           <button class="fold" type="button" data-act="bg">${ui.bgOpen || draft.background ? "背景" : "背景（可不填）"}</button>
           ${ui.bgOpen || draft.background ? `<textarea class="area-in" id="bg" rows="3" placeholder="为谁、怎么回事">${escapeHtml(draft.background)}</textarea>` : ""}
           <span class="lab">选项</span>
@@ -1412,6 +1468,10 @@
         ${header("决策", `<button class="quiet back" type="button" data-act="back" title="返回">‹</button>`, `<button class="ghost" type="button" data-act="ask-del">删除</button>`)}
         <div class="paper">
           <input class="title-in" id="title" maxlength="20" value="${escapeHtml(draft.title)}" />
+          <div class="cat-row">
+            <button type="button" class="cat-pill work${draft.category === "work" ? " on" : ""}" data-cat="work">工作</button>
+            <button type="button" class="cat-pill life${draft.category === "life" ? " on" : ""}" data-cat="life">生活</button>
+          </div>
           <button class="fold" type="button" data-act="bg">${ui.bgOpen || draft.background ? "背景" : "背景（可不填）"}</button>
           ${ui.bgOpen || draft.background ? `<textarea class="area-in" id="bg" rows="3">${escapeHtml(draft.background)}</textarea>` : ""}
           <span class="lab">选项</span>
@@ -1480,7 +1540,10 @@
       return `
         ${header("决策", `<button class="quiet back" type="button" data-act="back" title="返回">‹</button>`, right)}
         <div class="paper">
-          <p class="ro-title">${escapeHtml(d.title)}</p>
+          <div class="ro-title-row">
+            <p class="ro-title">${escapeHtml(d.title)}</p>
+            <span class="cat-badge ${catOf(d)}">${catOf(d) === "work" ? "工作" : "生活"}</span>
+          </div>
           ${d.background ? `<p class="ro-body">${escapeHtml(d.background)}</p>` : ""}
           <span class="lab">选项</span>
           ${opts}
@@ -1819,6 +1882,7 @@
       draft = {
         title: d.title,
         background: d.background || "",
+        category: catOf(d),
         options: d.options.map((o) => ({ ...o })),
         chosenId: d.chosenId,
         start: d.start,
@@ -1841,6 +1905,7 @@
       d.start = draft.start;
       d.end = draft.end;
       d.check = draft.check.trim();
+      d.category = draft.category;
       return true;
     }
 
@@ -1853,7 +1918,7 @@
           render();
           return;
         }
-        const t = e.target.closest("[data-act], [data-day], [data-open], [data-choose], [data-supp], [data-pick], [data-v]");
+        const t = e.target.closest("[data-act], [data-day], [data-open], [data-choose], [data-supp], [data-pick], [data-v], [data-cat]");
         if (!t) return;
 
         if (t.dataset.open) {
@@ -1877,6 +1942,12 @@
           syncDraft();
           const id = t.dataset.supp;
           ui.supp[id] = !suppOpen(id);
+          render();
+          return;
+        }
+        if (t.dataset.cat && !t.dataset.act) {
+          syncDraft();
+          draft.category = t.dataset.cat;
           render();
           return;
         }
@@ -1929,6 +2000,9 @@
           render();
         } else if (act === "week") {
           ui.mode = "week";
+          render();
+        } else if (act === "filter-all" || act === "filter-work" || act === "filter-life") {
+          ui.filter = act.slice(7);
           render();
         } else if (act === "compose") {
           ui.day = null;
