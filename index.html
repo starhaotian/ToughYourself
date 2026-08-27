@@ -385,10 +385,14 @@
     }
 
     .dock {
-      margin-top: auto;
-      padding-top: 32px;
+      position: sticky;
+      bottom: 0;
+      margin-top: 24px;
+      padding: 10px 0 calc(6px + env(safe-area-inset-bottom));
       display: flex;
       justify-content: center;
+      background: var(--paper);
+      border-top: 1px solid var(--line);
     }
 
     .primary {
@@ -468,8 +472,7 @@
     .cat-pill.work.on { background: var(--work); border-color: var(--work); }
     .cat-pill.life.on { background: var(--life); border-color: var(--life); }
 
-    .cat-filter { display: flex; justify-content: center; gap: 8px; margin: 0 0 16px; }
-    .cat-filter .cat-pill { padding: 3px 14px 4px; font-size: 12px; }
+    .nav-side .cat-pill { padding: 3px 12px 4px; font-size: 12px; }
 
     .line-in, .area-in {
       width: 100%;
@@ -928,6 +931,9 @@
       .month-title { font-size: 22px; }
       .cell { min-height: 56px; }
       .title-in, .ro-title { font-size: 24px; }
+      .nav-side { gap: 10px; }
+      .nav-side .cat-pill { padding: 2px 8px; font-size: 11px; }
+      .top-row .nav-side { flex-wrap: wrap; }
     }
   </style>
 </head>
@@ -1407,6 +1413,9 @@
         <button class="quiet arrow" type="button" data-act="next" title="${mode === "week" ? "下一周" : "下个月"}">›</button>
       `;
       const right = `
+        <button type="button" class="cat-pill${ui.filter === "all" ? " on" : ""}" data-act="filter-all">全部</button>
+        <button type="button" class="cat-pill work${ui.filter === "work" ? " on" : ""}" data-act="filter-work">工作</button>
+        <button type="button" class="cat-pill life${ui.filter === "life" ? " on" : ""}" data-act="filter-life">生活</button>
         <button class="quiet ${mode === "month" ? "on" : ""}" type="button" data-act="month">月</button>
         <button class="quiet ${mode === "week" ? "on" : ""}" type="button" data-act="week">周</button>
         <button class="quiet" type="button" data-act="settings">设置</button>
@@ -1420,11 +1429,6 @@
       return `
         ${brand}
         ${header(fmtTitle(ui.anchor, mode), left, right)}
-        <div class="cat-filter">
-          <button type="button" class="cat-pill${ui.filter === "all" ? " on" : ""}" data-act="filter-all">全部</button>
-          <button type="button" class="cat-pill work${ui.filter === "work" ? " on" : ""}" data-act="filter-work">工作</button>
-          <button type="button" class="cat-pill life${ui.filter === "life" ? " on" : ""}" data-act="filter-life">生活</button>
-        </div>
         ${mode === "week" ? "" : weekdayRow()}
         ${mode === "week" ? weekList(days) : `<div class="grid month-grid">${calCells(days, mode)}</div>`}
         ${empty ? `<p class="empty-line">把一条会被打分的选择记下</p>` : ""}
