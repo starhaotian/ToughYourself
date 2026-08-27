@@ -734,7 +734,15 @@
       margin: 4px 0;
       white-space: pre-wrap;
     }
-    .ai-acts { display: flex; justify-content: flex-end; margin-top: 8px; }
+    button.hd-ai {
+      color: var(--ink);
+      font-family: var(--serif);
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+    }
+    button.hd-ai:disabled { color: var(--faint); }
+    button.hd-ai:not(:disabled):hover { opacity: 0.65; }
     .stamp {
       font-family: var(--serif);
       font-size: 22px;
@@ -1619,6 +1627,11 @@
           <button class="ghost" type="button" data-act="ask-del">删除</button>`
         : `<button class="quiet" type="button" data-act="edit">编辑</button>
           <button class="ghost" type="button" data-act="ask-del">删除</button>`;
+      const aiState = d.ai || {};
+      const aiBusy = aiState.pending || aiBusyId === d.id;
+      const aiHd = aiBusy
+        ? `<button class="hd-ai" type="button" disabled>问春风</button>`
+        : `<button class="hd-ai" type="button" data-act="ask-ai">${aiState.text || aiState.error ? "再问一次" : "问春风"}</button>`;
       const notes = d.result ? `
         <span class="lab">留言</span>
         ${(d.notes || []).map((n) => `
@@ -1631,7 +1644,7 @@
         <button class="add-opt" type="button" data-act="add-note" disabled>追加</button>
       ` : "";
       return `
-        ${header("决策", `<button class="quiet back" type="button" data-act="back" title="返回">‹</button>`, right)}
+        ${header("决策", `<button class="quiet back" type="button" data-act="back" title="返回">‹</button>`, aiHd + right)}
         <div class="paper">
           <div class="ro-title-row">
             <p class="ro-title">${escapeHtml(d.title)}</p>
@@ -1667,12 +1680,6 @@
     let qcaEnvId = "";     // 页内缓存的环境 id
 
     function aiBlock(d) {
-      const cfg = loadQca();
-      if (!cfg.pat || !cfg.currentAgentId) {
-        return `<div class="ai-block">
-          <button class="add-opt" type="button" data-act="to-ai-settings">连上 Qoder，问一次春风</button>
-        </div>`;
-      }
       const ai = d.ai || {};
       if (ai.pending || aiBusyId === d.id) {
         return `<div class="ai-block ai-wait">
@@ -1683,19 +1690,15 @@
       if (ai.error) {
         return `<div class="ai-block">
           <p class="err">${escapeHtml(ai.error)}</p>
-          <button class="add-opt" type="button" data-act="ask-ai">再问一次</button>
         </div>`;
       }
       if (ai.text) {
         return `<div class="ai-block">
           <p class="ai-meta"><span class="ai-seal">评</span><span class="ai-by">${escapeHtml(ai.agentName || "AI")} · ${escapeHtml(fmtShort(iso(new Date(ai.at))))}</span></p>
           ${aiSections(ai.text)}
-          <div class="ai-acts"><button class="quiet" type="button" data-act="ask-ai">再问一次</button></div>
         </div>`;
       }
-      return `<div class="ai-block">
-        <button class="add-opt" type="button" data-act="ask-ai">问春风</button>
-      </div>`;
+      return "";
     }
 
     function aiSections(text) {
@@ -2416,8 +2419,6 @@
             render();
             qcaJson("sessions/" + encodeURIComponent(sid) + "/cancel", { method: "POST" }).catch(() => {});
           }
-        } else if (act === "to-ai-settings") {
-          openSettings();
         } else if (act === "open-conclude") {
           ui.concludeOpen = true;
           render();
