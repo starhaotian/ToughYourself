@@ -242,6 +242,52 @@
       letter-spacing: 0.04em;
     }
 
+    .rf-seal {
+      flex-shrink: 0;
+      font-family: var(--serif);
+      font-size: 10px;
+      line-height: 1;
+      color: var(--paper);
+      background: var(--ink);
+      border-radius: 3px;
+      width: 15px;
+      height: 15px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .cell .rf-seal { width: 13px; height: 13px; font-size: 9.5px; }
+
+    .rf-line {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      width: 100%;
+      text-align: left;
+      min-width: 0;
+      padding: 2px 5px 2px 8px;
+    }
+    .rf-topic {
+      flex: 1;
+      min-width: 0;
+      font-family: var(--serif);
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .rf-line:hover .rf-topic { color: var(--green); }
+
+    .rf-meta { display: flex; align-items: center; gap: 8px; margin: 2px 0 10px; }
+    .rf-by { color: var(--faint); font-size: 11px; letter-spacing: 0.05em; }
+    .rf-text { color: var(--ink); font-size: 15px; line-height: 1.8; white-space: pre-wrap; margin: 6px 0; }
+    .day-list .rf-line { padding: 12px 4px 12px 12px; }
+    .day-list .rf-topic { font-size: 14px; }
+
+    .r-cal-head { display: flex; align-items: center; justify-content: center; gap: 16px; margin: 4px 0 6px; }
+    .r-cal-title { font-family: var(--serif); font-size: 13px; color: var(--muted); letter-spacing: 0.06em; }
+
     .mks {
       display: flex;
       flex-wrap: wrap;
@@ -391,6 +437,7 @@
       padding: 10px 0 calc(6px + env(safe-area-inset-bottom));
       display: flex;
       justify-content: center;
+      gap: 36px;
     }
 
     .primary {
@@ -1054,12 +1101,17 @@
         .replace(/"/g, "&quot;");
     }
 
+    function normData(raw) {
+      const d = raw && typeof raw === "object" && Array.isArray(raw.decisions) ? raw : { decisions: [] };
+      if (!Array.isArray(d.reflections)) d.reflections = [];
+      return d;
+    }
+
     function loadKey(key) {
       try {
-        const raw = JSON.parse(localStorage.getItem(key) || "null");
-        if (raw && Array.isArray(raw.decisions)) return raw;
+        return normData(JSON.parse(localStorage.getItem(key) || "null"));
       } catch (_) {}
-      return { decisions: [] };
+      return { decisions: [], reflections: [] };
     }
 
     function cloudKey(id) {
@@ -1155,7 +1207,7 @@
       };
     }
 
-    let data = { decisions: [] };
+    let data = { decisions: [], reflections: [] };
     let ui = {
       sync: "",
       screen: "cal",
@@ -1173,6 +1225,10 @@
       verdict: "",
       miss: "",
       confirmDel: false,
+      rId: null,
+      rEdit: false,
+      rCalOpen: false,
+      rCal: null,
       err: "",
       qcaBusy: false,
       qcaErr: "",
@@ -1183,10 +1239,21 @@
       qcaReady: false,
     };
     let draft = emptyDraft();
+    let rdraft = { id: null, topic: "", text: "", date: today() };
     let agentForm = { id: null, name: "", system: "", model: "" };
 
     function byId(id) {
       return data.decisions.find((d) => d.id === id) || null;
+    }
+
+    function rById(id) {
+      return (data.reflections || []).find((r) => r.id === id) || null;
+    }
+
+    function listForDayR(date) {
+      return (data.reflections || [])
+        .filter((r) => r.date === date)
+        .sort((a, b) => a.createdAt - b.createdAt);
     }
 
     function catOf(d) {
@@ -1242,7 +1309,10 @@
     }
 
     function monthHas(s) {
-      return data.decisions.some((d) => (inMonth(d.start, s) || inMonth(d.end, s)) && catPass(d));
+      return (
+        data.decisions.some((d) => (inMonth(d.start, s) || inMonth(d.end, s)) && catPass(d)) ||
+        (ui.filter === "all" && data.reflections.some((r) => inMonth(r.date, s)))
+      );
     }
 
     function listForDay(date) {
@@ -1319,6 +1389,26 @@
       });
     }
 
+    function rdraftReady() {
+      return !!(rdraft.topic.trim() && rdraft.text.trim() && rdraft.date);
+    }
+
+    function syncRDraft() {
+      const topic = $("#r-topic");
+      const text = $("#r-text");
+      if (topic) rdraft.topic = topic.value.slice(0, 20);
+      if (text) rdraft.text = text.value;
+    }
+
+    function applyRDraft(r) {
+      if (!rdraftReady()) return false;
+      r.topic = rdraft.topic.trim();
+      r.text = rdraft.text.trim();
+      r.date = rdraft.date;
+      r.updatedAt = Date.now();
+      return true;
+    }
+
     function header(title, left, right) {
       return `
         <header class="top">
@@ -1342,7 +1432,8 @@
         const d = parseIso(date);
         const out = mode === "month" && (d.getFullYear() !== y || d.getMonth() !== m);
         const { total, top } = topForDay(date, 3);
-        const has = total > 0;
+        const rList = ui.filter === "all" ? listForDayR(date) : [];
+        const has = total > 0 || rList.length > 0;
         const hot = top.some((x) => urgency(x, date) === 0);
         const due = !hot && top.some((x) => urgency(x, date) === 1);
         const cls = [
@@ -1351,7 +1442,7 @@
           date === t ? "today" : "",
           has ? "has" : "",
         ].join(" ");
-        const count = has
+        const count = total > 0
           ? `<span class="cell-n${hot ? " hot" : due ? " due" : ""}">${total}</span>`
           : "";
         const items = top.map((dec) => {
@@ -1362,7 +1453,12 @@
           </button>`;
         }).join("");
         const more = total > 3 ? `<span class="cell-more">+${total - 3}</span>` : "";
-        const inner = `<div class="cell-head"><span class="num">${d.getDate()}</span>${count}</div>${items}${more}`;
+        const rfRow = rList.length ? `<button type="button" class="rf-line" data-rf="${rList[0].id}">
+            <span class="rf-seal">省</span>
+            <span class="rf-topic">${escapeHtml(rList[0].topic)}</span>
+            ${rList.length > 1 ? `<span class="cell-more">+${rList.length - 1}</span>` : ""}
+          </button>` : "";
+        const inner = `<div class="cell-head"><span class="num">${d.getDate()}</span>${count}</div>${items}${rfRow}${more}`;
         return `<div class="${cls}" data-day="${date}">${inner}</div>`;
       }).join("");
     }
@@ -1373,7 +1469,8 @@
         const d = parseIso(date);
         const wd = WD[(d.getDay() + 6) % 7];
         const { total, top } = topForDay(date, 20);
-        const has = total > 0;
+        const rList = ui.filter === "all" ? listForDayR(date) : [];
+        const has = total > 0 || rList.length > 0;
         const hot = top.some((x) => urgency(x, date) === 0);
         const due = !hot && top.some((x) => urgency(x, date) === 1);
         const cls = [
@@ -1381,7 +1478,7 @@
           date === t ? "today" : "",
           has ? "has" : "",
         ].join(" ");
-        const count = has
+        const count = total > 0
           ? `<span class="week-date-n${hot ? " hot" : due ? " due" : ""}">${total}</span>`
           : "";
         const items = top.map((dec) => {
@@ -1391,13 +1488,19 @@
             <span class="cell-t">${escapeHtml(dec.title)}</span>
           </button>`;
         }).join("");
+        const rItems = rList.map((r) => `
+          <button type="button" class="rf-line" data-rf="${r.id}">
+            <span class="rf-seal">省</span>
+            <span class="rf-topic">${escapeHtml(r.topic)}</span>
+          </button>
+        `).join("");
         return `<div class="${cls}" data-day="${date}">
           <div class="week-date">
             <span class="week-date-wd">${wd}</span>
             <span class="week-date-num">${d.getDate()}</span>
             ${count}
           </div>
-          <div class="week-items">${items}</div>
+          <div class="week-items">${items}${rItems}</div>
         </div>`;
       }).join("")}</div>`;
     }
@@ -1430,7 +1533,10 @@
         ${mode === "week" ? "" : weekdayRow()}
         ${mode === "week" ? weekList(days) : `<div class="grid month-grid">${calCells(days, mode)}</div>`}
         ${empty ? `<p class="empty-line">把一条会被打分的选择记下</p>` : ""}
-        <div class="dock"><button class="primary" type="button" data-act="compose">记下</button></div>
+        <div class="dock">
+          <button class="primary" type="button" data-act="compose">记下</button>
+          <button class="primary" type="button" data-act="reflect">反思</button>
+        </div>
         ${authMode === "cloud" ? `<p class="sync ${ui.sync === "busy" || ui.sync === "err" ? ui.sync : ""}" id="sync">${syncText()}</p>` : ""}
       `;
     }
@@ -1450,10 +1556,107 @@
           </button>
         </li>`;
       }).join("");
+      const rItems = listForDayR(date).map((r) => `
+        <li>
+          <button type="button" class="rf-line" data-rf="${r.id}">
+            <span class="rf-seal">省</span>
+            <span class="rf-topic">${escapeHtml(r.topic)}</span>
+          </button>
+        </li>
+      `).join("");
       return `
         ${header(fmtShort(date), `<button class="quiet back" type="button" data-act="back" title="返回">‹</button>`, "")}
-        ${items ? `<ul class="day-list">${items}</ul>` : `<p class="empty-line">这一天还没有决策</p>`}
-        <div class="dock"><button class="primary" type="button" data-act="compose-day">记下</button></div>
+        ${items || rItems ? `<ul class="day-list">${items}${rItems}</ul>` : `<p class="empty-line">这一天还没有决策</p>`}
+        <div class="dock">
+          <button class="primary" type="button" data-act="compose-day">记下</button>
+          <button class="primary" type="button" data-act="reflect-day">反思</button>
+        </div>
+      `;
+    }
+
+    function miniCalR() {
+      const focus = ui.rCal || rdraft.date || today();
+      const days = monthCells(focus);
+      const { y, m } = ym(focus);
+      return `
+        <div class="mini">
+          <div class="r-cal-head">
+            <button class="quiet arrow" type="button" data-act="r-cal-prev" title="上个月">‹</button>
+            <span class="r-cal-title">${y} 年 ${m + 1} 月</span>
+            <button class="quiet arrow" type="button" data-act="r-cal-next" title="下个月">›</button>
+          </div>
+          ${weekdayRow()}
+          <div class="grid">${days.map((date) => {
+            const d = parseIso(date);
+            const out = d.getFullYear() !== y || d.getMonth() !== m;
+            const cls = [
+              "cell",
+              out ? "out" : "",
+              date === today() ? "today" : "",
+              rdraft.date === date ? "span" : "",
+              "pickable",
+            ].join(" ");
+            const mk = rdraft.date === date ? `<span class="mk start-live"></span>` : "";
+            return `<button type="button" class="${cls}" data-rpick="${date}">
+              <span class="num">${d.getDate()}</span>
+              <span class="mks">${mk}</span>
+            </button>`;
+          }).join("")}</div>
+        </div>
+      `;
+    }
+
+    function renderRCompose() {
+      return `
+        ${header("反思", `<button class="quiet back" type="button" data-act="back" title="返回">‹</button>`, "")}
+        <div class="paper">
+          <input class="title-in" id="r-topic" maxlength="20" placeholder="给这段反思起个题" value="${escapeHtml(rdraft.topic)}" />
+          <div class="dates">
+            <button class="date-pick ${ui.rCalOpen ? "on" : ""}" type="button" data-act="r-date">
+              <span class="lab">日子</span>
+              <div class="date-val">${fmtShort(rdraft.date)}</div>
+            </button>
+          </div>
+          ${ui.rCalOpen ? miniCalR() : ""}
+          <span class="lab">想说的话</span>
+          <textarea class="area-in" id="r-text" rows="6" placeholder="今天哪里判断对了、哪里错了">${escapeHtml(rdraft.text)}</textarea>
+          <p class="err">${escapeHtml(ui.err)}</p>
+          <div class="actions">
+            <button class="primary" type="button" data-act="save-r" ${rdraftReady() ? "" : "disabled"}>记下</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderRPaper() {
+      const r = rById(ui.rId);
+      if (!r) return renderCal();
+      if (ui.rEdit) {
+        return `
+          ${header("反思", `<button class="quiet back" type="button" data-act="back" title="返回">‹</button>`, `<button class="ghost" type="button" data-act="ask-del">删除</button>`)}
+          <div class="paper">
+            <input class="title-in" id="r-topic" maxlength="20" value="${escapeHtml(rdraft.topic)}" />
+            <div class="dates">
+              <button class="date-pick ${ui.rCalOpen ? "on" : ""}" type="button" data-act="r-date">
+                <span class="lab">日子</span>
+                <div class="date-val">${fmtShort(rdraft.date)}</div>
+              </button>
+            </div>
+            ${ui.rCalOpen ? miniCalR() : ""}
+            <span class="lab">想说的话</span>
+            <textarea class="area-in" id="r-text" rows="6">${escapeHtml(rdraft.text)}</textarea>
+          </div>
+          ${ui.confirmDel ? delDialog("r") : ""}
+        `;
+      }
+      return `
+        ${header("反思", `<button class="quiet back" type="button" data-act="back" title="返回">‹</button>`, `<button class="quiet" type="button" data-act="edit-r">编辑</button><button class="ghost" type="button" data-act="ask-del">删除</button>`)}
+        <div class="paper">
+          <p class="ro-title">${escapeHtml(r.topic)}</p>
+          <p class="rf-meta"><span class="rf-seal">省</span><span class="rf-by">${fmtShort(r.date)}</span></p>
+          <p class="rf-text">${escapeHtml(r.text)}</p>
+        </div>
+        ${ui.confirmDel ? delDialog("r") : ""}
       `;
     }
 
@@ -1597,7 +1800,7 @@
           <span class="lab">未来如何验证决策是否正确</span>
           <input class="line-in" id="check" maxlength="120" value="${escapeHtml(draft.check)}" />
         </div>
-        ${ui.confirmDel ? delDialog() : ""}
+        ${ui.confirmDel ? delDialog("d") : ""}
       `;
     }
 
@@ -1672,7 +1875,7 @@
           ` : ""}
           ${notes}
         </div>
-        ${ui.confirmDel ? delDialog() : ""}
+        ${ui.confirmDel ? delDialog("d") : ""}
       `;
     }
 
@@ -1866,13 +2069,14 @@
       setTimeout(tick, 2000);
     }
 
-    function delDialog() {
+    function delDialog(kind) {
+      const r = kind === "r";
       return `<div class="mask">
         <div class="dialog" data-stop="1">
-          <p>删掉这条决策？日历上的标记也会一起没。</p>
+          <p>${r ? "删掉这段反思？日历上的「省」也会一起没。" : "删掉这条决策？日历上的标记也会一起没。"}</p>
           <div class="dialog-acts">
             <button class="quiet" type="button" data-act="cancel-del">取消</button>
-            <button class="ghost" type="button" data-act="del">删除</button>
+            <button class="ghost" type="button" data-act="${r ? "del-r" : "del"}">删除</button>
           </div>
         </div>
       </div>`;
@@ -2129,6 +2333,8 @@
       if (ui.screen === "cal") shell.innerHTML = renderCal();
       else if (ui.screen === "day") shell.innerHTML = renderDay();
       else if (ui.screen === "compose") shell.innerHTML = renderCompose();
+      else if (ui.screen === "rcompose") shell.innerHTML = renderRCompose();
+      else if (ui.screen === "rpaper") shell.innerHTML = renderRPaper();
       else if (ui.screen === "settings") shell.innerHTML = renderSettings();
       else if (ui.screen === "agent-form") shell.innerHTML = renderAgentForm();
       else shell.innerHTML = renderPaper();
@@ -2158,6 +2364,39 @@
       render();
       const title = $("#title");
       if (title) title.focus();
+    }
+
+    function openRCompose(date) {
+      rdraft = { id: null, topic: "", text: "", date: date || today() };
+      ui.rCalOpen = false;
+      ui.rCal = rdraft.date;
+      ui.err = "";
+      ui.rId = null;
+      ui.screen = "rcompose";
+      render();
+      const topic = $("#r-topic");
+      if (topic) topic.focus();
+    }
+
+    function openR(id) {
+      const r = rById(id);
+      if (!r) return;
+      ui.rId = id;
+      ui.screen = "rpaper";
+      ui.rEdit = false;
+      ui.err = "";
+      ui.confirmDel = false;
+      render();
+    }
+
+    function startREdit() {
+      const r = rById(ui.rId);
+      if (!r) return;
+      ui.rEdit = true;
+      ui.err = "";
+      ui.rCalOpen = false;
+      rdraft = { id: r.id, topic: r.topic, text: r.text, date: r.date };
+      render();
     }
 
     function openPaper(id) {
@@ -2222,16 +2461,20 @@
           render();
           return;
         }
-        const t = e.target.closest("[data-act], [data-day], [data-open], [data-choose], [data-supp], [data-pick], [data-v], [data-cat]");
+        const t = e.target.closest("[data-act], [data-day], [data-open], [data-rf], [data-choose], [data-supp], [data-pick], [data-rpick], [data-v], [data-cat]");
         if (!t) return;
 
         if (t.dataset.open) {
           openPaper(t.dataset.open);
           return;
         }
+        if (t.dataset.rf) {
+          openR(t.dataset.rf);
+          return;
+        }
         if (t.dataset.day) {
           const date = t.dataset.day;
-          if (!listForDay(date).length) {
+          if (!listForDay(date).length && !listForDayR(date).length) {
             ui.day = date;
             openCompose(date);
             return;
@@ -2284,6 +2527,14 @@
           render();
           return;
         }
+        if (t.dataset.rpick) {
+          syncRDraft();
+          rdraft.date = t.dataset.rpick;
+          ui.rCal = t.dataset.rpick;
+          ui.err = "";
+          render();
+          return;
+        }
         if (t.dataset.v) {
           ui.verdict = t.dataset.v;
           render();
@@ -2313,8 +2564,15 @@
           openCompose(today());
         } else if (act === "compose-day") {
           openCompose(ui.day || today());
+        } else if (act === "reflect") {
+          ui.day = null;
+          openRCompose(today());
+        } else if (act === "reflect-day") {
+          openRCompose(ui.day || today());
         } else if (act === "edit") {
           startEdit();
+        } else if (act === "edit-r") {
+          startREdit();
         } else if (act === "back") {
           if (ui.screen === "agent-form") {
             ui.qcaConfirmDel = false;
@@ -2348,6 +2606,29 @@
               ui.day = null;
               goCal();
             }
+          } else if (ui.screen === "rcompose") {
+            const date = rdraft.date;
+            if (date && (listForDay(date).length || listForDayR(date).length)) {
+              ui.day = date;
+              ui.screen = "day";
+              ui.err = "";
+              render();
+            } else {
+              ui.day = null;
+              goCal();
+            }
+          } else if (ui.screen === "rpaper") {
+            if (ui.rEdit) {
+              syncRDraft();
+              const r = rById(ui.rId);
+              if (r && applyRDraft(r)) save();
+              ui.rEdit = false;
+              render();
+            } else {
+              ui.day = null;
+              ui.rId = null;
+              goCal();
+            }
           } else {
             ui.day = null;
             ui.paperId = null;
@@ -2356,6 +2637,17 @@
         } else if (act === "bg") {
           syncDraft();
           ui.bgOpen = !ui.bgOpen;
+          render();
+        } else if (act === "r-date") {
+          syncRDraft();
+          ui.rCalOpen = !ui.rCalOpen;
+          if (ui.rCalOpen && !ui.rCal) ui.rCal = rdraft.date || today();
+          render();
+        } else if (act === "r-cal-prev") {
+          ui.rCal = addMonths(ui.rCal || rdraft.date || today(), -1);
+          render();
+        } else if (act === "r-cal-next") {
+          ui.rCal = addMonths(ui.rCal || rdraft.date || today(), 1);
           render();
         } else if (act === "add-opt") {
           syncDraft();
@@ -2400,6 +2692,30 @@
           ui.err = "";
           ui.editing = false;
           ui.concludeOpen = false;
+          ui.confirmDel = false;
+          render();
+        } else if (act === "save-r") {
+          syncRDraft();
+          if (!rdraftReady()) {
+            ui.err = "还差一个主题，和想说的话。";
+            render();
+            return;
+          }
+          const newId = uid();
+          data.reflections.push({
+            id: newId,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            topic: rdraft.topic.trim(),
+            text: rdraft.text.trim(),
+            date: rdraft.date,
+          });
+          save();
+          ui.anchor = rdraft.date;
+          ui.rId = newId;
+          ui.screen = "rpaper";
+          ui.err = "";
+          ui.rEdit = false;
           ui.confirmDel = false;
           render();
         } else if (act === "ask-ai") {
@@ -2466,6 +2782,13 @@
           data.decisions = data.decisions.filter((x) => x.id !== ui.paperId);
           save();
           ui.paperId = null;
+          ui.confirmDel = false;
+          goCal();
+        } else if (act === "del-r") {
+          data.reflections = data.reflections.filter((x) => x.id !== ui.rId);
+          save();
+          ui.rId = null;
+          ui.rEdit = false;
           ui.confirmDel = false;
           goCal();
         } else if (act === "logout") {
@@ -2638,6 +2961,11 @@
         syncDraft();
         const saveBtn = shell.querySelector("[data-act=save]");
         if (saveBtn) saveBtn.disabled = !draftReady();
+        const saveRBtn = shell.querySelector("[data-act=save-r]");
+        if (saveRBtn || shell.querySelector("#r-topic")) {
+          syncRDraft();
+          if (saveRBtn) saveRBtn.disabled = !rdraftReady();
+        }
         const confirmBtn = shell.querySelector("[data-act=confirm-verdict]");
         if (confirmBtn) confirmBtn.disabled = !ui.verdict;
         const noteBtn = shell.querySelector("[data-act=add-note]");
@@ -2645,6 +2973,8 @@
         if (noteBtn) noteBtn.disabled = !(noteBox && noteBox.value.trim());
         const t = $("#title");
         if (t && t.value.length > 20) t.value = t.value.slice(0, 20);
+        const rt = $("#r-topic");
+        if (rt && rt.value.length > 20) rt.value = rt.value.slice(0, 20);
       };
 
       shell.onkeydown = (e) => {
@@ -2728,7 +3058,7 @@
       }
       if (row && row.data && Array.isArray(row.data.decisions)) {
         if (JSON.stringify(row.data) !== JSON.stringify(data)) {
-          data = row.data;
+          data = normData(row.data);
           localStorage.setItem(userCloudKey, JSON.stringify(data));
           render();
         }
